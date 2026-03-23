@@ -213,6 +213,7 @@ class Transaction(Base):
     category_id = Column(Integer, ForeignKey("categories.id", ondelete="SET NULL"), nullable=True, index=True)
     description = Column(Text, nullable=True)
     funding_source = Column(String(20), nullable=False, default="main", index=True)
+    debt_kind = Column(String(30), nullable=True, index=True)
     attachment_file_id = Column(String(512), nullable=True)
     attachment_type = Column(String(20), nullable=True)
     attachment_name = Column(String(255), nullable=True)
@@ -230,6 +231,10 @@ class Transaction(Base):
     __table_args__ = (
         CheckConstraint("amount > 0", name="positive_amount"),
         CheckConstraint("funding_source IN ('main', 'debt')", name="valid_funding_source"),
+        CheckConstraint(
+            "debt_kind IS NULL OR debt_kind IN ('cash_loan', 'credit_purchase')",
+            name="valid_transaction_debt_kind",
+        ),
     )
 
     def __repr__(self):
@@ -325,6 +330,7 @@ class Debt(Base):
     amount = Column(Numeric(15, 2), nullable=False)
     remaining_amount = Column(Numeric(15, 2), nullable=False)
     used_amount = Column(Numeric(15, 2), nullable=False, default=0)
+    kind = Column(String(30), nullable=False, default="credit_purchase", index=True)
     currency = Column(String(3), nullable=False, default="UZS")
     description = Column(Text, nullable=True)
     source_name = Column(String(255), nullable=True)
@@ -346,6 +352,7 @@ class Debt(Base):
         CheckConstraint("remaining_amount >= 0", name="non_negative_remaining_debt"),
         CheckConstraint("used_amount >= 0", name="non_negative_used_debt"),
         CheckConstraint("used_amount <= amount", name="used_amount_within_principal"),
+        CheckConstraint("kind IN ('cash_loan', 'credit_purchase')", name="valid_debt_kind"),
         CheckConstraint(
             "status IN ('active', 'partially_repaid', 'fully_repaid', 'archived')",
             name="valid_debt_status",

@@ -26,6 +26,7 @@ from database.finance import (
     get_spendable_main_balance,
     get_user_balance_summary,
     normalize_currency,
+    normalize_debt_kind,
     normalize_funding_source,
 )
 from database.group_context import (
@@ -469,6 +470,8 @@ async def create_transaction(
                 ).scalar_one_or_none()
                 if not debt:
                     raise ValueError("Debt entry not found")
+                if normalize_debt_kind(getattr(debt, "kind", None)) != "credit_purchase":
+                    raise ValueError("Selected debt cannot be used as an expense source")
                 available = await get_available_debt_for_entry(db, debt, normalized_currency)
                 if normalized_amount > available:
                     raise ValueError(f"Insufficient debt balance: {available:.2f} {normalized_currency}")
@@ -595,7 +598,9 @@ async def get_user_statistics(
 
         for tx in transactions:
             converted = await convert_amount(db, tx.amount, tx.currency, display_currency)
-            if tx.type == TransactionType.INCOME:
+            if tx.type == TransactionType.INCOME or (
+                tx.type == TransactionType.DEBT and normalize_debt_kind(getattr(tx, "debt_kind", None)) == "cash_loan"
+            ):
                 total_income += converted
             elif tx.type == TransactionType.EXPENSE:
                 total_expense += converted
@@ -1196,6 +1201,7 @@ async def create_debt(
     amount: Decimal,
     currency: str | None,
     description: str | None = None,
+    kind: str | None = None,
     *,
     source_name: str | None = None,
     source_contact: str | None = None,
@@ -1207,6 +1213,7 @@ async def create_debt(
         current_group = await get_active_group_id(db, user)
         debt_amount = _money(amount)
         debt_currency = normalize_currency(currency, user.default_currency)
+        debt_kind = normalize_debt_kind(kind)
         if debt_amount <= 0:
             raise ValueError("Amount must be positive")
 
@@ -1216,6 +1223,7 @@ async def create_debt(
             amount=debt_amount,
             remaining_amount=debt_amount,
             used_amount=Decimal("0"),
+            kind=debt_kind,
             currency=debt_currency,
             description=description,
             source_name=source_name,
@@ -1225,6 +1233,19 @@ async def create_debt(
             status="active",
         )
         db.add(debt)
+        db.add(
+            Transaction(
+                user_id=user.id,
+                group_id=current_group,
+                type=TransactionType.DEBT,
+                amount=debt_amount,
+                currency=debt_currency,
+                description=description or source_name or ("Cash loan received" if debt_kind == "cash_loan" else "Buy on credit"),
+                funding_source="main",
+                debt_kind=debt_kind,
+                transaction_date=datetime.now(timezone.utc),
+            )
+        )
         await db.flush()
         await write_audit_log(
             db,
@@ -1233,11 +1254,12 @@ async def create_debt(
             entity_id=str(debt.id),
             actor=user,
             group_id=current_group,
-            payload={"amount": str(debt_amount), "currency": debt_currency, "description": description},
+            payload={"amount": str(debt_amount), "currency": debt_currency, "description": description, "kind": debt_kind},
         )
         await db.refresh(debt)
         return {
             "id": str(debt.id),
+            "kind": debt_kind,
             "amount": _money(debt.amount),
             "remaining": _money(debt.remaining_amount),
             "used": _money(debt.used_amount),
@@ -1263,10 +1285,14 @@ async def list_debts(user_id: int) -> list[dict[str, Any]]:
 
         payload = []
         for debt in debts:
-            available = max(Decimal("0"), _to_decimal(debt.amount) - _to_decimal(debt.used_amount))
+            debt_kind = normalize_debt_kind(getattr(debt, "kind", None))
+            available = Decimal("0")
+            if debt_kind == "credit_purchase":
+                available = max(Decimal("0"), _to_decimal(debt.amount) - _to_decimal(debt.used_amount))
             payload.append(
                 {
                     "id": str(debt.id),
+                    "kind": debt_kind,
                     "amount": _money(debt.amount),
                     "remaining": _money(debt.remaining_amount),
                     "used": _money(debt.used_amount),

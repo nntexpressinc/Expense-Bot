@@ -2,6 +2,7 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
+from database.finance import normalize_debt_kind
 from database.group_context import normalize_group_role, normalize_lang, normalize_theme
 from database.workers import attendance_units
 
@@ -18,6 +19,9 @@ def test_language_and_theme_normalization():
     assert normalize_group_role("admin") == "admin"
     assert normalize_group_role("member") == "member"
     assert normalize_group_role("owner") == "member"
+    assert normalize_debt_kind("cash_loan") == "cash_loan"
+    assert normalize_debt_kind("credit_purchase") == "credit_purchase"
+    assert normalize_debt_kind("borrowed") == "credit_purchase"
 
 
 def test_attendance_units_supports_daily_half_day_and_custom():

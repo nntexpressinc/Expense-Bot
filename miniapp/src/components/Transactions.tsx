@@ -10,6 +10,36 @@ import { EmptyState, LoadingState } from '@/components/shared/States'
 
 type EntryType = 'income' | 'expense'
 
+const transactionTitle = (
+  transaction: {
+    type: string
+    debt_kind?: 'cash_loan' | 'credit_purchase' | null
+    category?: { icon?: string; name?: string }
+  },
+  language: 'uz' | 'ru' | 'en',
+) => {
+  if (transaction.category?.name) {
+    return `${transaction.category.icon ? `${transaction.category.icon} ` : ''}${transaction.category.name}`
+  }
+  if (transaction.type === 'debt') {
+    return transaction.debt_kind === 'cash_loan' ? t('cashLoan', language) : t('creditPurchase', language)
+  }
+  if (transaction.type === 'debt_payment') {
+    return t('pay', language)
+  }
+  return transaction.type
+}
+
+const transactionPrefix = (transaction: { type: string; debt_kind?: 'cash_loan' | 'credit_purchase' | null }) => {
+  if (transaction.type === 'expense' || transaction.type === 'transfer_out' || transaction.type === 'debt_payment') {
+    return '-'
+  }
+  if (transaction.type === 'debt') {
+    return transaction.debt_kind === 'cash_loan' ? '+' : ''
+  }
+  return '+'
+}
+
 export default function Transactions() {
   const queryClient = useQueryClient()
   const { language, locale, settings } = useAppSettings()
@@ -43,6 +73,7 @@ export default function Transactions() {
         queryClient.invalidateQueries({ queryKey: ['recent-transactions'] }),
         queryClient.invalidateQueries({ queryKey: ['balance'] }),
         queryClient.invalidateQueries({ queryKey: ['debts-for-expense'] }),
+        queryClient.invalidateQueries({ queryKey: ['debts'] }),
       ])
       setAmount('')
       setDescription('')
@@ -73,6 +104,7 @@ export default function Transactions() {
     () =>
       (debtsQuery.data || []).filter(
         (debt) =>
+          debt.kind === 'credit_purchase' &&
           (debt.available_to_spend || 0) > 0 &&
           (debt.status === 'active' || debt.status === 'partially_repaid' || !debt.status),
       ),
@@ -102,7 +134,7 @@ export default function Transactions() {
   }
 
   return (
-    <Page title={t('activity', language)} subtitle={`${settings?.active_group_name || '-'} • ${settings?.default_currency || 'UZS'}`}>
+    <Page title={t('activity', language)} subtitle={`${settings?.active_group_name || '-'} - ${settings?.default_currency || 'UZS'}`}>
       <Card>
         <SectionTitle title={`${t('addIncome', language)} / ${t('addExpense', language)}`} />
         <div className="mb-3 flex gap-2">
@@ -135,14 +167,22 @@ export default function Transactions() {
                 </button>
               </div>
               {fundingSource === 'debt' ? (
-                <select className="field" value={debtId} onChange={(e) => setDebtId(e.target.value)}>
-                  <option value="">{t('selectDebt', language)}</option>
-                  {openDebts.map((debt) => (
-                    <option key={debt.id} value={debt.id}>
-                      {(debt.description || debt.source_name || debt.id).slice(0, 42)} • {formatMoney(debt.available_to_spend || 0, debt.currency, locale)}
-                    </option>
-                  ))}
-                </select>
+                <>
+                  {openDebts.length ? (
+                    <select className="field" value={debtId} onChange={(e) => setDebtId(e.target.value)}>
+                      <option value="">{t('selectDebt', language)}</option>
+                      {openDebts.map((debt) => (
+                        <option key={debt.id} value={debt.id}>
+                          {(debt.description || debt.source_name || debt.id).slice(0, 42)} - {formatMoney(debt.available_to_spend || 0, debt.currency, locale)}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="rounded-2xl border border-[var(--border)] px-4 py-3 text-sm text-[var(--text-soft)]">
+                      {t('noDebtSources', language)}
+                    </div>
+                  )}
+                </>
               ) : null}
             </>
           ) : null}
@@ -166,14 +206,12 @@ export default function Transactions() {
               <div key={transaction.id} className="surface-card-muted px-4 py-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="text-sm font-semibold text-[var(--text)]">
-                      {transaction.category?.icon ? `${transaction.category.icon} ` : ''}
-                      {transaction.category?.name || transaction.type}
-                    </p>
-                    <p className="mt-1 text-xs text-[var(--text-soft)]">
-                      {formatDateTime(transaction.transaction_date, language)}
-                    </p>
+                    <p className="text-sm font-semibold text-[var(--text)]">{transactionTitle(transaction, language)}</p>
+                    <p className="mt-1 text-xs text-[var(--text-soft)]">{formatDateTime(transaction.transaction_date, language)}</p>
                     {transaction.description ? <p className="mt-2 text-sm text-[var(--text-soft)]">{transaction.description}</p> : null}
+                    {transaction.type === 'debt' && transaction.debt_kind === 'credit_purchase' ? (
+                      <p className="mt-1 text-xs text-[var(--text-muted)]">{t('debtRepaymentOnly', language)}</p>
+                    ) : null}
                     {transaction.funding_source ? (
                       <p className="mt-1 text-xs text-[var(--text-muted)]">
                         {transaction.funding_source === 'debt' ? t('debtSource', language) : t('mainSource', language)}
@@ -182,7 +220,7 @@ export default function Transactions() {
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-semibold text-[var(--text)]">
-                      {transaction.type === 'expense' || transaction.type === 'transfer_out' || transaction.type === 'debt_payment' ? '-' : '+'}
+                      {transactionPrefix(transaction)}
                       {formatMoney(transaction.amount, transaction.currency, locale)}
                     </p>
                     {(transaction.type === 'income' || transaction.type === 'expense') ? (

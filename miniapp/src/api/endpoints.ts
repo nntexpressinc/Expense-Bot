@@ -47,6 +47,7 @@ export interface Transaction {
   amount: number
   currency: string
   funding_source?: 'main' | 'debt'
+  debt_kind?: 'cash_loan' | 'credit_purchase' | null
   category?: {
     id: number
     name: string
@@ -158,10 +159,12 @@ export interface DebtRepayment {
 
 export interface Debt {
   id: string
+  kind: 'cash_loan' | 'credit_purchase'
   amount: number
   remaining: number
   used?: number
   available_to_spend?: number
+  affects_main_balance?: boolean
   currency: string
   description?: string
   source_name?: string
@@ -275,6 +278,7 @@ export const exportStatisticsExcel = (period?: 'day' | 'week' | 'month' | 'year'
 export const listDebts = () => apiClient.get<Debt[]>('/debts/').then((res) => res.data)
 export const createDebt = (data: {
   amount: number
+  kind?: 'cash_loan' | 'credit_purchase'
   currency?: string
   description?: string
   source_name?: string

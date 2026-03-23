@@ -16,6 +16,16 @@ const transactionTypeLabel = (type: string, lang: 'uz' | 'ru' | 'en') => {
   return type
 }
 
+const transactionPrefix = (transaction: { type: string; debt_kind?: 'cash_loan' | 'credit_purchase' | null }) => {
+  if (transaction.type === 'expense' || transaction.type === 'transfer_out' || transaction.type === 'debt_payment') {
+    return '-'
+  }
+  if (transaction.type === 'debt') {
+    return transaction.debt_kind === 'cash_loan' ? '+' : ''
+  }
+  return '+'
+}
+
 export default function Dashboard() {
   const { language, locale, settings } = useAppSettings()
   const balanceQuery = useQuery({ queryKey: ['balance'], queryFn: getBalance })
@@ -116,7 +126,12 @@ export default function Dashboard() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <p className="text-sm font-semibold text-[var(--text)]">
-                      {transaction.category?.name || transactionTypeLabel(transaction.type, language)}
+                      {transaction.category?.name ||
+                        (transaction.type === 'debt'
+                          ? transaction.debt_kind === 'cash_loan'
+                            ? t('cashLoan', language)
+                            : t('creditPurchase', language)
+                          : transactionTypeLabel(transaction.type, language))}
                     </p>
                     <p className="mt-1 text-xs text-[var(--text-soft)]">
                       {formatDateTime(transaction.transaction_date, language)}
@@ -127,7 +142,7 @@ export default function Dashboard() {
                   </div>
                   <div className="text-right">
                     <p className="text-sm font-semibold text-[var(--text)]">
-                      {transaction.type === 'expense' || transaction.type === 'transfer_out' || transaction.type === 'debt_payment' ? '-' : '+'}
+                      {transactionPrefix(transaction)}
                       {formatMoney(transaction.amount, transaction.currency, locale)}
                     </p>
                     {transaction.funding_source ? (

@@ -14,6 +14,7 @@ class IncomeStates(StatesGroup):
 class ExpenseStates(StatesGroup):
     """States for adding expense"""
     waiting_for_amount = State()
+    waiting_for_debt_source = State()
     waiting_for_category = State()
     waiting_for_description = State()
 

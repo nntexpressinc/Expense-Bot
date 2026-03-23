@@ -139,11 +139,13 @@ async def init_db():
                 """
                 ALTER TABLE IF EXISTS transactions
                 ADD COLUMN IF NOT EXISTS group_id BIGINT,
-                ADD COLUMN IF NOT EXISTS funding_source VARCHAR(20) DEFAULT 'main'
+                ADD COLUMN IF NOT EXISTS funding_source VARCHAR(20) DEFAULT 'main',
+                ADD COLUMN IF NOT EXISTS debt_kind VARCHAR(30)
                 """
             )
         )
         await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_transactions_group_id ON transactions(group_id)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_transactions_debt_kind ON transactions(debt_kind)"))
 
         await conn.execute(
             text(
@@ -171,6 +173,7 @@ async def init_db():
                 ALTER TABLE IF EXISTS debts
                 ADD COLUMN IF NOT EXISTS group_id BIGINT,
                 ADD COLUMN IF NOT EXISTS used_amount NUMERIC(15,2) DEFAULT 0,
+                ADD COLUMN IF NOT EXISTS kind VARCHAR(30) DEFAULT 'credit_purchase',
                 ADD COLUMN IF NOT EXISTS source_name VARCHAR(255),
                 ADD COLUMN IF NOT EXISTS source_contact VARCHAR(255),
                 ADD COLUMN IF NOT EXISTS reference VARCHAR(255),
@@ -181,6 +184,7 @@ async def init_db():
             )
         )
         await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_debts_group_id ON debts(group_id)"))
+        await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_debts_kind ON debts(kind)"))
 
         # Populate groups from legacy users.group_id values.
         await conn.execute(
@@ -242,10 +246,14 @@ async def init_db():
                 """
                 UPDATE transactions t
                 SET group_id = COALESCE(t.group_id, u.active_group_id, u.group_id, u.id),
-                    funding_source = COALESCE(NULLIF(t.funding_source, ''), 'main')
+                    funding_source = COALESCE(NULLIF(t.funding_source, ''), 'main'),
+                    debt_kind = CASE
+                        WHEN t.type::text = 'debt' THEN COALESCE(NULLIF(t.debt_kind, ''), 'credit_purchase')
+                        ELSE t.debt_kind
+                    END
                 FROM users u
                 WHERE t.user_id = u.id
-                  AND (t.group_id IS NULL OR t.funding_source IS NULL)
+                  AND (t.group_id IS NULL OR t.funding_source IS NULL OR (t.type::text = 'debt' AND t.debt_kind IS NULL))
                 """
             )
         )
@@ -280,6 +288,7 @@ async def init_db():
                 UPDATE debts d
                 SET group_id = COALESCE(d.group_id, u.active_group_id, u.group_id, u.id),
                     used_amount = COALESCE(d.used_amount, 0),
+                    kind = COALESCE(NULLIF(d.kind, ''), 'credit_purchase'),
                     status = CASE
                         WHEN d.archived_at IS NOT NULL THEN 'archived'
                         WHEN d.remaining_amount <= 0 THEN 'fully_repaid'
@@ -288,7 +297,7 @@ async def init_db():
                     END
                 FROM users u
                 WHERE d.user_id = u.id
-                  AND (d.group_id IS NULL OR d.status IS NULL OR d.used_amount IS NULL)
+                  AND (d.group_id IS NULL OR d.status IS NULL OR d.used_amount IS NULL OR d.kind IS NULL)
                 """
             )
         )

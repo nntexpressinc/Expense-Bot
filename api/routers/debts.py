@@ -15,6 +15,7 @@ from database.finance import (
     convert_amount,
     get_available_debt_for_entry,
     get_spendable_main_balance,
+    normalize_debt_kind,
     recalculate_debt_status,
 )
 from database.group_context import get_active_group_id
@@ -48,6 +49,7 @@ class DebtRepaymentResponse(BaseModel):
 
 class DebtCreateRequest(BaseModel):
     amount: Decimal = Field(..., gt=0)
+    kind: str = Field("credit_purchase", pattern="^(cash_loan|credit_purchase)$")
     currency: Optional[str] = Field(None, pattern="^(UZS|USD)$")
     description: Optional[str] = None
     source_name: Optional[str] = None
@@ -58,10 +60,12 @@ class DebtCreateRequest(BaseModel):
 
 class DebtResponse(BaseModel):
     id: str
+    kind: str
     amount: float
     remaining: float
     used_amount: float
     available_to_spend: float
+    affects_main_balance: bool
     currency: str
     status: str
     description: Optional[str] = None
@@ -85,6 +89,7 @@ async def _serialize_debt(
     debt: Debt,
     target_currency: str,
 ) -> dict:
+    debt_kind = normalize_debt_kind(getattr(debt, "kind", None))
     available_to_spend = await get_available_debt_for_entry(db, debt, target_currency)
     repayments = []
     for repayment in sorted(debt.repayments, key=lambda item: item.repaid_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True):
@@ -107,10 +112,12 @@ async def _serialize_debt(
 
     return {
         "id": str(debt.id),
+        "kind": debt_kind,
         "amount": float(amount_display),
         "remaining": float(remaining_display),
         "used_amount": float(used_display),
         "available_to_spend": float(available_to_spend),
+        "affects_main_balance": debt_kind == "cash_loan",
         "currency": target_currency,
         "status": debt.status,
         "description": debt.description,
@@ -148,6 +155,7 @@ async def create_debt_endpoint(
 ):
     group_id = await get_active_group_id(db, current_user)
     currency = (payload.currency or current_user.default_currency).upper()
+    debt_kind = normalize_debt_kind(payload.kind)
 
     debt = Debt(
         user_id=current_user.id,
@@ -155,6 +163,7 @@ async def create_debt_endpoint(
         amount=payload.amount,
         remaining_amount=payload.amount,
         used_amount=Decimal("0.00"),
+        kind=debt_kind,
         currency=currency,
         description=payload.description,
         source_name=payload.source_name,
@@ -172,8 +181,9 @@ async def create_debt_endpoint(
             type=TransactionType.DEBT,
             amount=payload.amount,
             currency=currency,
-            description=payload.description or payload.source_name or "Debt created",
+            description=payload.description or payload.source_name or ("Cash loan received" if debt_kind == "cash_loan" else "Buy on credit"),
             funding_source="main",
+            debt_kind=debt_kind,
         )
     )
 
@@ -187,6 +197,7 @@ async def create_debt_endpoint(
         payload={
             "amount": str(payload.amount),
             "currency": currency,
+            "kind": debt_kind,
             "source_name": payload.source_name,
         },
     )

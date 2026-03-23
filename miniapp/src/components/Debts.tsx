@@ -8,10 +8,16 @@ import { formatDateTime, formatMoney } from '@/lib/format'
 import { Card, Page, SectionTitle } from '@/components/shared/Page'
 import { EmptyState, LoadingState } from '@/components/shared/States'
 
+type DebtKind = 'cash_loan' | 'credit_purchase'
+
+const debtKindLabel = (kind: DebtKind, lang: 'uz' | 'ru' | 'en') =>
+  kind === 'cash_loan' ? t('cashLoan', lang) : t('creditPurchase', lang)
+
 export default function Debts() {
   const queryClient = useQueryClient()
   const { language, locale, settings } = useAppSettings()
   const { showAlert, haptic } = useTelegram()
+  const [kind, setKind] = useState<DebtKind>('cash_loan')
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
   const [sourceName, setSourceName] = useState('')
@@ -31,6 +37,8 @@ export default function Debts() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['debts'] }),
         queryClient.invalidateQueries({ queryKey: ['balance'] }),
+        queryClient.invalidateQueries({ queryKey: ['transactions'] }),
+        queryClient.invalidateQueries({ queryKey: ['recent-transactions'] }),
       ])
       setAmount('')
       setDescription('')
@@ -38,6 +46,7 @@ export default function Debts() {
       setSourceContact('')
       setReference('')
       setNote('')
+      setKind('cash_loan')
       haptic.success()
       await showAlert(t('successSaved', language))
     },
@@ -55,6 +64,7 @@ export default function Debts() {
         queryClient.invalidateQueries({ queryKey: ['debts'] }),
         queryClient.invalidateQueries({ queryKey: ['balance'] }),
         queryClient.invalidateQueries({ queryKey: ['transactions'] }),
+        queryClient.invalidateQueries({ queryKey: ['recent-transactions'] }),
       ])
       setPayAmounts({})
       haptic.success()
@@ -66,10 +76,19 @@ export default function Debts() {
     },
   })
 
-  const openDebts = useMemo(
-    () => (debtsQuery.data || []).filter((debt) => (debt.remaining || 0) > 0),
+  const sortedDebts = useMemo(
+    () =>
+      [...(debtsQuery.data || [])].sort((left, right) => {
+        if (left.kind === right.kind) {
+          return new Date(right.created_at).getTime() - new Date(left.created_at).getTime()
+        }
+        return left.kind === 'cash_loan' ? -1 : 1
+      }),
     [debtsQuery.data],
   )
+
+  const cashLoans = sortedDebts.filter((debt) => debt.kind === 'cash_loan')
+  const creditPurchases = sortedDebts.filter((debt) => debt.kind === 'credit_purchase')
 
   const submitCreate = async (event: FormEvent) => {
     event.preventDefault()
@@ -80,6 +99,7 @@ export default function Debts() {
     }
     await createMutation.mutateAsync({
       amount: numericAmount,
+      kind,
       currency: settings?.default_currency || 'UZS',
       description: description.trim() || undefined,
       source_name: sourceName.trim() || undefined,
@@ -102,10 +122,66 @@ export default function Debts() {
     return <LoadingState label={t('loading', language)} />
   }
 
+  const renderDebtCard = (debt: (typeof sortedDebts)[number]) => (
+    <div key={debt.id} className="surface-card-muted px-4 py-4">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold text-[var(--text)]">{debt.description || debt.source_name || debt.id.slice(0, 8)}</p>
+            <span className="rounded-full border border-[var(--border)] px-2 py-1 text-[11px] font-medium text-[var(--text-soft)]">
+              {debtKindLabel(debt.kind, language)}
+            </span>
+          </div>
+          <p className="mt-1 text-xs text-[var(--text-soft)]">{formatDateTime(debt.created_at, language)}</p>
+          {debt.source_name ? <p className="mt-2 text-sm text-[var(--text-soft)]">{t('sourceName', language)}: {debt.source_name}</p> : null}
+          {debt.source_contact ? <p className="mt-1 text-sm text-[var(--text-soft)]">{t('sourceContact', language)}: {debt.source_contact}</p> : null}
+          {debt.note ? <p className="mt-1 text-sm text-[var(--text-soft)]">{debt.note}</p> : null}
+          <p className="mt-2 text-xs text-[var(--text-muted)]">
+            {debt.kind === 'cash_loan'
+              ? t('cashLoanHint', language)
+              : `${t('availableToSpend', language)}: ${formatMoney(debt.available_to_spend || 0, debt.currency, locale)}`}
+          </p>
+        </div>
+        <div className="text-right">
+          <p className="text-sm font-semibold text-[var(--text)]">{formatMoney(debt.amount, debt.currency, locale)}</p>
+          <p className="mt-1 text-xs text-[var(--text-soft)]">
+            {t('remaining', language)}: {formatMoney(debt.remaining, debt.currency, locale)}
+          </p>
+          {debt.status ? <p className="mt-1 text-xs text-[var(--text-muted)]">{debt.status}</p> : null}
+        </div>
+      </div>
+      {debt.remaining > 0 ? (
+        <div className="mt-3 flex gap-2">
+          <input
+            className="field"
+            inputMode="decimal"
+            placeholder={t('amount', language)}
+            value={payAmounts[debt.id] || ''}
+            onChange={(e) => setPayAmounts((current) => ({ ...current, [debt.id]: e.target.value }))}
+          />
+          <button type="button" className="primary-button min-w-[108px]" onClick={() => void submitPay(debt.id)}>
+            {t('pay', language)}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  )
+
   return (
     <Page title={t('debts', language)} subtitle={settings?.active_group_name || '-'}>
       <Card>
-        <SectionTitle title={t('createDebt', language)} />
+        <SectionTitle title={t('createDebt', language)} hint={t('debtType', language)} />
+        <div className="mb-3 grid grid-cols-2 gap-2">
+          <button type="button" className={`pill-button ${kind === 'cash_loan' ? 'active' : ''}`} onClick={() => setKind('cash_loan')}>
+            {t('cashLoan', language)}
+          </button>
+          <button type="button" className={`pill-button ${kind === 'credit_purchase' ? 'active' : ''}`} onClick={() => setKind('credit_purchase')}>
+            {t('creditPurchase', language)}
+          </button>
+        </div>
+        <div className="mb-3 rounded-2xl border border-[var(--border)] px-4 py-3 text-sm text-[var(--text-soft)]">
+          {kind === 'cash_loan' ? t('cashLoanHint', language) : t('creditPurchaseHint', language)}
+        </div>
         <form className="space-y-3" onSubmit={submitCreate}>
           <input className="field" inputMode="decimal" placeholder={t('amount', language)} value={amount} onChange={(e) => setAmount(e.target.value)} />
           <input className="field" placeholder={t('description', language)} value={description} onChange={(e) => setDescription(e.target.value)} />
@@ -120,73 +196,18 @@ export default function Debts() {
       </Card>
 
       <Card>
-        <SectionTitle title={t('debtList', language)} />
-        {debtsQuery.data?.length ? (
-          <div className="space-y-3">
-            {debtsQuery.data.map((debt) => (
-              <div key={debt.id} className="surface-card-muted px-4 py-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-semibold text-[var(--text)]">{debt.description || debt.source_name || debt.id.slice(0, 8)}</p>
-                    <p className="mt-1 text-xs text-[var(--text-soft)]">{formatDateTime(debt.created_at, language)}</p>
-                    {debt.source_name ? <p className="mt-2 text-sm text-[var(--text-soft)]">{t('sourceName', language)}: {debt.source_name}</p> : null}
-                    {debt.source_contact ? <p className="mt-1 text-sm text-[var(--text-soft)]">{t('sourceContact', language)}: {debt.source_contact}</p> : null}
-                    {debt.note ? <p className="mt-1 text-sm text-[var(--text-soft)]">{debt.note}</p> : null}
-                    <p className="mt-2 text-xs text-[var(--text-muted)]">
-                      {t('availableToSpend', language)}: {formatMoney(debt.available_to_spend || 0, debt.currency, locale)}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-semibold text-[var(--text)]">{formatMoney(debt.amount, debt.currency, locale)}</p>
-                    <p className="mt-1 text-xs text-[var(--text-soft)]">
-                      {t('remaining', language)}: {formatMoney(debt.remaining, debt.currency, locale)}
-                    </p>
-                    {debt.status ? <p className="mt-1 text-xs text-[var(--text-muted)]">{debt.status}</p> : null}
-                  </div>
-                </div>
-                {debt.remaining > 0 ? (
-                  <div className="mt-3 flex gap-2">
-                    <input
-                      className="field"
-                      inputMode="decimal"
-                      placeholder={t('amount', language)}
-                      value={payAmounts[debt.id] || ''}
-                      onChange={(e) => setPayAmounts((current) => ({ ...current, [debt.id]: e.target.value }))}
-                    />
-                    <button type="button" className="primary-button min-w-[108px]" onClick={() => void submitPay(debt.id)}>
-                      {t('pay', language)}
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <EmptyState title={t('noDebts', language)} />
-        )}
+        <SectionTitle title={t('cashLoan', language)} />
+        {cashLoans.length ? <div className="space-y-3">{cashLoans.map(renderDebtCard)}</div> : <EmptyState title={t('noDebts', language)} hint={t('cashLoanHint', language)} />}
       </Card>
 
-      {openDebts.length ? (
-        <Card>
-          <SectionTitle title={t('openStatistics', language)} hint={settings?.default_currency || 'UZS'} />
-          <div className="space-y-2">
-            {openDebts.map((debt) => (
-              <div key={debt.id} className="flex items-center justify-between rounded-2xl border border-[var(--border)] px-4 py-3">
-                <div>
-                  <p className="text-sm font-medium text-[var(--text)]">{debt.description || debt.source_name || debt.id.slice(0, 8)}</p>
-                  <p className="mt-1 text-xs text-[var(--text-soft)]">
-                    {t('remaining', language)}: {formatMoney(debt.remaining, debt.currency, locale)}
-                  </p>
-                </div>
-                <div className="text-right text-xs text-[var(--text-muted)]">
-                  <p>{t('availableToSpend', language)}</p>
-                  <p className="mt-1 font-semibold text-[var(--text)]">{formatMoney(debt.available_to_spend || 0, debt.currency, locale)}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      ) : null}
+      <Card>
+        <SectionTitle title={t('creditPurchase', language)} />
+        {creditPurchases.length ? (
+          <div className="space-y-3">{creditPurchases.map(renderDebtCard)}</div>
+        ) : (
+          <EmptyState title={t('noDebtSources', language)} hint={t('creditPurchaseHint', language)} />
+        )}
+      </Card>
     </Page>
   )
 }

@@ -16,6 +16,7 @@ from database.finance import (
     get_available_debt_for_entry,
     get_spendable_main_balance,
     normalize_currency,
+    normalize_debt_kind,
     normalize_funding_source,
 )
 from database.group_context import get_active_group_id
@@ -57,6 +58,7 @@ class TransactionResponse(BaseModel):
     amount: float
     currency: str
     funding_source: str
+    debt_kind: Optional[str] = None
     category: dict
     description: Optional[str]
     attachment_file_id: Optional[str]
@@ -131,6 +133,7 @@ async def get_transactions(
                 "amount": float(transaction.amount),
                 "currency": transaction.currency,
                 "funding_source": transaction.funding_source,
+                "debt_kind": transaction.debt_kind,
                 "category": {
                     "id": category.id if category else None,
                     "name": category.name if category else _t(lang, "Noma'lum", "Неизвестно", "Unknown"),
@@ -196,6 +199,16 @@ async def create_transaction(
             raise HTTPException(
                 status_code=404,
                 detail=_t(lang, "Qarz topilmadi", "Долг не найден", "Debt not found"),
+            )
+        if normalize_debt_kind(getattr(debt_entry, "kind", None)) != "credit_purchase":
+            raise HTTPException(
+                status_code=400,
+                detail=_t(
+                    lang,
+                    "Bu qarz faqat qaytarish uchun, xarajat manbasi emas",
+                    "Этот долг нельзя использовать как источник расхода",
+                    "This debt cannot be used as an expense source",
+                ),
             )
         available_debt = await get_available_debt_for_entry(db, debt_entry, currency)
         if amount > available_debt:
@@ -284,6 +297,7 @@ async def create_transaction(
         "amount": float(transaction.amount),
         "currency": transaction.currency,
         "funding_source": transaction.funding_source,
+        "debt_kind": transaction.debt_kind,
         "category": {
             "id": category.id if category else None,
             "name": category.name if category else _t(lang, "Noma'lum", "Неизвестно", "Unknown"),
