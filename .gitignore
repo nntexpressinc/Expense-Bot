@@ -1,0 +1,97 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment Variables
+.env
+.env.local
+.env.*.local
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# Reports
+reports/
+*.pdf
+*.xlsx
+
+# Testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Alembic
+alembic/versions/*.pyc
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Temporary files
+tmp/
+temp/
+
+# Node.js / React (Mini App)
+miniapp/node_modules/
+miniapp/dist/
+miniapp/build/
+miniapp/.vite/
+miniapp/.cache/
+miniapp/.turbo/
+miniapp/.next/
+miniapp/.nuxt/
+miniapp/.vercel/
+miniapp/.netlify/
+miniapp/coverage/
+miniapp/.DS_Store
+miniapp/*.log
+miniapp/npm-debug.log*
+miniapp/yarn-debug.log*
+miniapp/yarn-error.log*
+miniapp/pnpm-debug.log*
+miniapp/lerna-debug.log*
+miniapp/.env
+miniapp/.env.local
+miniapp/.env.*.local
+miniapp/.env.production.local

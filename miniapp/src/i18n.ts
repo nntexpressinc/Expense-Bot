@@ -1,0 +1,124 @@
+export type AppLang = 'uz' | 'ru' | 'en'
+
+export const normalizeLang = (value?: string): AppLang => {
+  const lang = (value || 'uz').toLowerCase()
+  if (lang.startsWith('ru')) return 'ru'
+  if (lang.startsWith('en')) return 'en'
+  return 'uz'
+}
+
+export const localeFromLang = (lang?: string): string => {
+  const normalized = normalizeLang(lang)
+  if (normalized === 'ru') return 'ru-RU'
+  if (normalized === 'en') return 'en-US'
+  return 'uz-UZ'
+}
+
+type Dict = Record<AppLang, string>
+
+const translations = {
+  loading: { uz: 'Yuklanmoqda...', ru: 'Загрузка...', en: 'Loading...' },
+  notLoaded: { uz: "Ma'lumot yuklanmadi", ru: 'Данные не загрузились', en: 'Data was not loaded' },
+  retry: { uz: 'Qayta urinish', ru: 'Повторить', en: 'Retry' },
+  home: { uz: 'Bosh sahifa', ru: 'Главная', en: 'Home' },
+  activity: { uz: 'Operatsiyalar', ru: 'Операции', en: 'Activity' },
+  transfers: { uz: 'O‘tkazmalar', ru: 'Переводы', en: 'Transfers' },
+  debts: { uz: 'Qarzlar', ru: 'Долги', en: 'Debts' },
+  team: { uz: 'Ishchilar', ru: 'Сотрудники', en: 'Team' },
+  settings: { uz: 'Sozlamalar', ru: 'Настройки', en: 'Settings' },
+  statistics: { uz: 'Statistika', ru: 'Статистика', en: 'Statistics' },
+  reports: { uz: 'Hisobotlar', ru: 'Отчёты', en: 'Reports' },
+  admin: { uz: 'Boshqaruv', ru: 'Управление', en: 'Admin' },
+  currentGroup: { uz: 'Faol guruh', ru: 'Активная группа', en: 'Active group' },
+  totalBalance: { uz: 'Jami balans', ru: 'Общий баланс', en: 'Total balance' },
+  ownBalance: { uz: 'O‘z mablag‘i', ru: 'Собственные средства', en: 'Own balance' },
+  receivedBalance: { uz: 'Qabul qilingan', ru: 'Получено', en: 'Received balance' },
+  debtBalance: { uz: 'Qarz limiti', ru: 'Долговой лимит', en: 'Debt balance' },
+  outstandingDebt: { uz: 'Qolgan qarz', ru: 'Остаток долга', en: 'Outstanding debt' },
+  quickActions: { uz: 'Tezkor amallar', ru: 'Быстрые действия', en: 'Quick actions' },
+  addIncome: { uz: 'Kirim qo‘shish', ru: 'Добавить доход', en: 'Add income' },
+  addExpense: { uz: 'Chiqim qo‘shish', ru: 'Добавить расход', en: 'Add expense' },
+  createTransfer: { uz: 'Pul o‘tkazish', ru: 'Сделать перевод', en: 'Create transfer' },
+  manageDebts: { uz: 'Qarzlarni boshqarish', ru: 'Управлять долгами', en: 'Manage debts' },
+  openStatistics: { uz: 'Statistikani ochish', ru: 'Открыть статистику', en: 'Open statistics' },
+  manageWorkers: { uz: 'Ishchilarni boshqarish', ru: 'Управлять сотрудниками', en: 'Manage workers' },
+  exportExcel: { uz: 'Excel yuklash', ru: 'Скачать Excel', en: 'Export Excel' },
+  recentOperations: { uz: 'So‘nggi operatsiyalar', ru: 'Последние операции', en: 'Recent operations' },
+  noOperations: { uz: 'Operatsiyalar yo‘q', ru: 'Операций нет', en: 'No operations yet' },
+  amount: { uz: 'Summa', ru: 'Сумма', en: 'Amount' },
+  currency: { uz: 'Valyuta', ru: 'Валюта', en: 'Currency' },
+  description: { uz: 'Izoh', ru: 'Описание', en: 'Description' },
+  save: { uz: 'Saqlash', ru: 'Сохранить', en: 'Save' },
+  send: { uz: 'Yuborish', ru: 'Отправить', en: 'Send' },
+  pay: { uz: 'To‘lash', ru: 'Погасить', en: 'Pay' },
+  income: { uz: 'Kirim', ru: 'Доход', en: 'Income' },
+  expense: { uz: 'Chiqim', ru: 'Расход', en: 'Expense' },
+  mainSource: { uz: 'Asosiy balans', ru: 'Основной баланс', en: 'Main balance' },
+  debtSource: { uz: 'Qarz manbasi', ru: 'Источник долга', en: 'Debt source' },
+  selectDebt: { uz: 'Qarzni tanlang', ru: 'Выберите долг', en: 'Select debt' },
+  chooseRecipient: { uz: 'Qabul qiluvchini tanlang', ru: 'Выберите получателя', en: 'Choose recipient' },
+  recipient: { uz: 'Qabul qiluvchi', ru: 'Получатель', en: 'Recipient' },
+  sent: { uz: 'Yuborilgan', ru: 'Отправлено', en: 'Sent' },
+  received: { uz: 'Qabul qilingan', ru: 'Получено', en: 'Received' },
+  noRecipients: { uz: 'Bu guruhda boshqa foydalanuvchi yo‘q', ru: 'В этой группе пока нет других пользователей', en: 'There are no other users in this group' },
+  debtList: { uz: 'Qarzlar ro‘yxati', ru: 'Список долгов', en: 'Debt list' },
+  createDebt: { uz: 'Qarz qo‘shish', ru: 'Добавить долг', en: 'Add debt' },
+  remaining: { uz: 'Qoldiq', ru: 'Остаток', en: 'Remaining' },
+  availableToSpend: { uz: 'Ishlatish mumkin', ru: 'Доступно к использованию', en: 'Available to spend' },
+  sourceName: { uz: 'Kimdan olindi', ru: 'Кредитор', en: 'Source / lender' },
+  sourceContact: { uz: 'Kontakt', ru: 'Контакт', en: 'Contact' },
+  reference: { uz: 'Hujjat / reference', ru: 'Референс', en: 'Reference' },
+  note: { uz: 'Qo‘shimcha eslatma', ru: 'Примечание', en: 'Note' },
+  workers: { uz: 'Ishchilar', ru: 'Сотрудники', en: 'Workers' },
+  addWorker: { uz: 'Ishchi qo‘shish', ru: 'Добавить сотрудника', en: 'Add worker' },
+  fullName: { uz: 'To‘liq ism', ru: 'Полное имя', en: 'Full name' },
+  phone: { uz: 'Telefon', ru: 'Телефон', en: 'Phone' },
+  roleName: { uz: 'Vazifa', ru: 'Роль', en: 'Role' },
+  paymentType: { uz: 'To‘lov turi', ru: 'Тип оплаты', en: 'Payment type' },
+  daily: { uz: 'Kunlik', ru: 'Подневный', en: 'Daily' },
+  monthly: { uz: 'Oylik', ru: 'Месячный', en: 'Monthly' },
+  volume: { uz: 'Hajm bo‘yicha', ru: 'Сдельный', en: 'Volume-based' },
+  startDate: { uz: 'Boshlagan sana', ru: 'Дата начала', en: 'Start date' },
+  attendance: { uz: 'Davomat', ru: 'Посещаемость', en: 'Attendance' },
+  advances: { uz: 'Avanslar', ru: 'Авансы', en: 'Advances' },
+  payments: { uz: 'To‘lovlar', ru: 'Выплаты', en: 'Payments' },
+  payable: { uz: 'To‘lanadigan summa', ru: 'К выплате', en: 'Payable amount' },
+  present: { uz: 'Keldi', ru: 'Присутствовал', en: 'Present' },
+  absent: { uz: 'Kelmadi', ru: 'Отсутствовал', en: 'Absent' },
+  halfDay: { uz: 'Yarim kun', ru: 'Полдня', en: 'Half-day' },
+  customUnits: { uz: 'Birliklar', ru: 'Единицы', en: 'Units' },
+  comment: { uz: 'Izoh', ru: 'Комментарий', en: 'Comment' },
+  recordAttendance: { uz: 'Davomat kiritish', ru: 'Отметить посещаемость', en: 'Record attendance' },
+  recordAdvance: { uz: 'Avans yozish', ru: 'Записать аванс', en: 'Record advance' },
+  recordPayment: { uz: 'To‘lov yozish', ru: 'Записать выплату', en: 'Record payment' },
+  language: { uz: 'Til', ru: 'Язык', en: 'Language' },
+  theme: { uz: 'Mavzu', ru: 'Тема', en: 'Theme' },
+  lightTheme: { uz: 'Yorug‘', ru: 'Светлая', en: 'Light' },
+  darkTheme: { uz: 'Qorong‘i', ru: 'Тёмная', en: 'Dark' },
+  createNewGroup: { uz: 'Yangi guruh', ru: 'Новая группа', en: 'New group' },
+  groupName: { uz: 'Guruh nomi', ru: 'Название группы', en: 'Group name' },
+  rename: { uz: 'Nomini o‘zgartirish', ru: 'Переименовать', en: 'Rename' },
+  members: { uz: 'A’zolar', ru: 'Участники', en: 'Members' },
+  addMember: { uz: 'A’zo qo‘shish', ru: 'Добавить участника', en: 'Add member' },
+  userId: { uz: 'Foydalanuvchi ID', ru: 'ID пользователя', en: 'User ID' },
+  role: { uz: 'Rol', ru: 'Роль', en: 'Role' },
+  member: { uz: 'A’zo', ru: 'Участник', en: 'Member' },
+  groupAdmin: { uz: 'Guruh admini', ru: 'Админ группы', en: 'Group admin' },
+  noGroups: { uz: 'Siz hali hech bir guruhga ulanmagansiz', ru: 'Вы пока не подключены ни к одной группе', en: 'You are not connected to any group yet' },
+  noDebts: { uz: 'Qarzlar yo‘q', ru: 'Долгов нет', en: 'No debts' },
+  noWorkers: { uz: 'Ishchilar yo‘q', ru: 'Сотрудников нет', en: 'No workers' },
+  notAllowed: { uz: 'Bu bo‘lim faqat admin uchun', ru: 'Этот раздел доступен только администратору', en: 'This section is for admins only' },
+  successSaved: { uz: 'Saqlandi', ru: 'Сохранено', en: 'Saved' },
+  requestFailed: { uz: 'So‘rov bajarilmadi', ru: 'Не удалось выполнить запрос', en: 'Request failed' },
+  choosePeriod: { uz: 'Davrni tanlang', ru: 'Выберите период', en: 'Choose period' },
+  day: { uz: 'Kun', ru: 'День', en: 'Day' },
+  week: { uz: 'Hafta', ru: 'Неделя', en: 'Week' },
+  month: { uz: 'Oy', ru: 'Месяц', en: 'Month' },
+  year: { uz: 'Yil', ru: 'Год', en: 'Year' },
+} satisfies Record<string, Dict>
+
+export type TranslationKey = keyof typeof translations
+
+export const t = (key: TranslationKey, lang: AppLang): string => {
+  return translations[key]?.[lang] || translations[key]?.uz || key
+}
