@@ -120,8 +120,8 @@ async def _resolve_funding_meta(db: AsyncSession, transaction: Transaction) -> d
     if not usage_row:
         return {
             'debt_source_name': None,
-            'debt_used_amount': None,
-            'main_used_amount': float(transaction.amount),
+            'debt_used_amount': float(transaction.amount),
+            'main_used_amount': 0.0,
         }
 
     usage, debt = usage_row
@@ -261,24 +261,19 @@ async def create_transaction(
                     ),
                 )
 
-            main_component = min(amount, spendable_main)
-            debt_component = (amount - main_component).quantize(Decimal('0.01'))
-
-            if debt_component <= 0:
-                persisted_funding_source = 'main'
-                debt_entry = None
-            else:
-                available_debt = await get_available_debt_for_entry(db, debt_entry, currency)
-                if debt_component > available_debt:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=_t(
-                            lang,
-                            f"Qarz balans yetarli emas. Tanlangan qarzda mavjud: {available_debt} {currency}. Avval yangi qarz qo'shing.",
-                            f'Долгового баланса недостаточно. В выбранном долге доступно: {available_debt} {currency}. Сначала добавьте новый долг.',
-                            f'Debt balance is insufficient. Available in the selected debt: {available_debt} {currency}. Create a new debt first.',
-                        ),
-                    )
+            main_component = Decimal('0.00')
+            debt_component = amount.quantize(Decimal('0.01'))
+            available_debt = await get_available_debt_for_entry(db, debt_entry, currency)
+            if debt_component > available_debt:
+                raise HTTPException(
+                    status_code=400,
+                    detail=_t(
+                        lang,
+                        f"Tanlangan qarz manbasida yetarli summa yo'q. Mavjud: {available_debt} {currency}. Boshqa qarzni tanlang yoki yangi qarz qo'shing.",
+                        f'\u0412 \u0432\u044b\u0431\u0440\u0430\u043d\u043d\u043e\u043c \u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a\u0435 \u0434\u043e\u043b\u0433\u0430 \u043d\u0435\u0442 \u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u043e\u0439 \u0441\u0443\u043c\u043c\u044b. \u0414\u043e\u0441\u0442\u0443\u043f\u043d\u043e: {available_debt} {currency}. \u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0434\u0440\u0443\u0433\u043e\u0439 \u0434\u043e\u043b\u0433 \u0438\u043b\u0438 \u0441\u043e\u0437\u0434\u0430\u0439\u0442\u0435 \u043d\u043e\u0432\u044b\u0439.',
+                        f'The selected debt source does not have enough balance. Available: {available_debt} {currency}. Choose another debt or create a new one.',
+                    ),
+                )
 
     transaction = Transaction(
         user_id=current_user.id,

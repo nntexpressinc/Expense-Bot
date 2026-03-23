@@ -119,7 +119,8 @@ export default function Transactions() {
 
   const numericAmount = Number(amount || 0)
   const mainBalance = balanceQuery.data?.total_balance || 0
-  const needsDebtFallback = type === 'expense' && numericAmount > mainBalance
+  const insufficientMain = type === 'expense' && fundingSource === 'main' && numericAmount > mainBalance
+  const requiresDebtChoice = type === 'expense' && fundingSource === 'debt'
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -128,7 +129,11 @@ export default function Transactions() {
       await showAlert(t('requestFailed', language))
       return
     }
-    if (type === 'expense' && needsDebtFallback && !debtId) {
+    if (type === 'expense' && insufficientMain) {
+      await showAlert(t('debtFallbackHint', language))
+      return
+    }
+    if (requiresDebtChoice && !debtId) {
       await showAlert(openDebts.length ? t('selectDebt', language) : t('createDebtFirst', language))
       return
     }
@@ -138,8 +143,8 @@ export default function Transactions() {
       currency: settings?.default_currency || 'UZS',
       category_id: categoryId || undefined,
       description: description.trim() || undefined,
-      funding_source: type === 'expense' ? (needsDebtFallback ? 'debt' : fundingSource) : undefined,
-      debt_id: type === 'expense' && (needsDebtFallback || fundingSource === 'debt') ? debtId || undefined : undefined,
+      funding_source: type === 'expense' ? fundingSource : undefined,
+      debt_id: requiresDebtChoice ? debtId || undefined : undefined,
     })
   }
 
@@ -173,19 +178,19 @@ export default function Transactions() {
           {type === 'expense' ? (
             <>
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" className={`pill-button ${!needsDebtFallback && fundingSource === 'main' ? 'active' : ''}`} onClick={() => setFundingSource('main')}>
+                <button type="button" className={`pill-button ${fundingSource === 'main' ? 'active' : ''}`} onClick={() => setFundingSource('main')}>
                   {t('mainSource', language)}
                 </button>
-                <button type="button" className={`pill-button ${(needsDebtFallback || fundingSource === 'debt') ? 'active' : ''}`} onClick={() => setFundingSource('debt')}>
+                <button type="button" className={`pill-button ${fundingSource === 'debt' ? 'active' : ''}`} onClick={() => setFundingSource('debt')}>
                   {t('debtSource', language)}
                 </button>
               </div>
-              {needsDebtFallback ? (
+              {insufficientMain ? (
                 <div className="rounded-2xl border border-[var(--border)] px-4 py-3 text-sm text-[var(--text-soft)]">
                   {t('debtFallbackHint', language)}
                 </div>
               ) : null}
-              {needsDebtFallback || fundingSource === 'debt' ? (
+              {fundingSource === 'debt' ? (
                 <>
                   {debtsQuery.isError ? (
                     <div className="rounded-2xl border border-[var(--border)] px-4 py-3 text-sm text-[var(--text-soft)]">

@@ -65,7 +65,7 @@ const translations = {
   debtRepaymentOnly: { uz: 'Faqat qaytarish uchun', ru: 'Только для погашения', en: 'Repayment only' },
   mainAndDebtSource: { uz: 'Asosiy + qarz', ru: 'Основной + долг', en: 'Main + debt' },
   createDebtFirst: { uz: "Avval qarz qo'shing", ru: 'Сначала добавьте долг', en: 'Create a debt first' },
-  debtFallbackHint: { uz: "Asosiy balans yetmasa, qolgan qismi qarz balansdan olinadi", ru: 'Если основного баланса не хватает, остаток будет взят из долгового баланса', en: 'If main balance is not enough, the remainder is covered from debt balance' },
+  debtFallbackHint: { uz: "Asosiy balans yetmasa, qarz manbasini tanlang", ru: '\u0415\u0441\u043b\u0438 \u043e\u0441\u043d\u043e\u0432\u043d\u043e\u0433\u043e \u0431\u0430\u043b\u0430\u043d\u0441\u0430 \u043d\u0435 \u0445\u0432\u0430\u0442\u0430\u0435\u0442, \u0432\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u0438\u0441\u0442\u043e\u0447\u043d\u0438\u043a \u0434\u043e\u043b\u0433\u0430', en: 'If main balance is not enough, choose a debt source' },
   chooseRecipient: { uz: 'Qabul qiluvchini tanlang', ru: 'Выберите получателя', en: 'Choose recipient' },
   recipient: { uz: 'Qabul qiluvchi', ru: 'Получатель', en: 'Recipient' },
   sent: { uz: 'Yuborilgan', ru: 'Отправлено', en: 'Sent' },
