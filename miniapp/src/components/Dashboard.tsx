@@ -38,7 +38,7 @@ export default function Dashboard() {
   return (
     <Page
       title={settings?.active_group_name || t('home', language)}
-      subtitle={`${t('currentGroup', language)} • ${balance.group_name || settings?.active_group_name || '-'}`}
+      subtitle={`${t('currentGroup', language)} - ${balance.group_name || settings?.active_group_name || '-'}`}
     >
       <Card>
         <SectionTitle title={t('totalBalance', language)} hint={balance.currency} />
@@ -101,7 +101,7 @@ export default function Dashboard() {
             </Link>
             <Link to="/settings" className="surface-card-muted px-4 py-4">
               <p className="text-sm font-semibold text-[var(--text)]">{t('settings', language)}</p>
-              <p className="mt-1 text-sm text-[var(--text-soft)]">{t('language', language)} · {t('theme', language)}</p>
+              <p className="mt-1 text-sm text-[var(--text-soft)]">{t('language', language)} - {t('theme', language)}</p>
             </Link>
           </div>
         </div>
@@ -147,3 +147,4 @@ export default function Dashboard() {
     </Page>
   )
 }
+

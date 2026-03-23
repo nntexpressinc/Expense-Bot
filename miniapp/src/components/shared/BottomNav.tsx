@@ -5,7 +5,7 @@ import { useAppSettings } from '@/hooks/useAppSettings'
 
 const iconClass = 'h-[18px] w-[18px]'
 
-const Icon = ({ name }: { name: 'home' | 'activity' | 'transfers' | 'team' | 'settings' }) => {
+const Icon = ({ name }: { name: 'home' | 'activity' | 'transfers' | 'debts' | 'settings' }) => {
   if (name === 'home') {
     return (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={iconClass}>
@@ -32,13 +32,11 @@ const Icon = ({ name }: { name: 'home' | 'activity' | 'transfers' | 'team' | 'se
       </svg>
     )
   }
-  if (name === 'team') {
+  if (name === 'debts') {
     return (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className={iconClass}>
-        <path d="M16 20v-1.5a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4V20" />
-        <circle cx="10" cy="8" r="3" />
-        <path d="M20 20v-1a3 3 0 0 0-2.4-2.94" />
-        <path d="M15 4.3a3 3 0 0 1 0 5.4" />
+        <rect x="4" y="6" width="16" height="12" rx="2" />
+        <path d="M8 10h8M8 14h5" />
       </svg>
     )
   }
@@ -50,7 +48,7 @@ const Icon = ({ name }: { name: 'home' | 'activity' | 'transfers' | 'team' | 'se
   )
 }
 
-export default function BottomNav({ canSeeTeam }: { canSeeTeam: boolean }) {
+export default function BottomNav() {
   const location = useLocation()
   const { haptic } = useTelegram()
   const { language } = useAppSettings()
@@ -59,7 +57,7 @@ export default function BottomNav({ canSeeTeam }: { canSeeTeam: boolean }) {
     { path: '/', label: t('home', language), icon: 'home' as const },
     { path: '/transactions', label: t('activity', language), icon: 'activity' as const },
     { path: '/transfers', label: t('transfers', language), icon: 'transfers' as const },
-    ...(canSeeTeam ? [{ path: '/team', label: t('team', language), icon: 'team' as const }] : []),
+    { path: '/debts', label: t('debts', language), icon: 'debts' as const },
     { path: '/settings', label: t('settings', language), icon: 'settings' as const },
   ]
 

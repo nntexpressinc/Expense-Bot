@@ -23,18 +23,18 @@ const monthBounds = () => {
   return { start: toIso(start), end: toIso(end) }
 }
 
+type DailyStatus = 'present' | 'half_day' | 'absent'
+
 export default function Workers() {
   const queryClient = useQueryClient()
   const { language, locale, settings } = useAppSettings()
   const { showAlert, haptic } = useTelegram()
   const [fullName, setFullName] = useState('')
-  const [phone, setPhone] = useState('')
   const [roleName, setRoleName] = useState('')
   const [paymentType, setPaymentType] = useState<'daily' | 'monthly' | 'volume'>('daily')
   const [rate, setRate] = useState('')
-  const [notes, setNotes] = useState('')
-  const [attendanceStatus, setAttendanceStatus] = useState<Record<string, 'present' | 'absent' | 'half_day' | 'custom'>>({})
-  const [attendanceUnits, setAttendanceUnits] = useState<Record<string, string>>({})
+  const [phone, setPhone] = useState('')
+  const [volumeUnits, setVolumeUnits] = useState<Record<string, string>>({})
   const [advanceAmount, setAdvanceAmount] = useState<Record<string, string>>({})
   const [paymentAmount, setPaymentAmount] = useState<Record<string, string>>({})
 
@@ -67,10 +67,10 @@ export default function Workers() {
     onSuccess: async () => {
       await refresh()
       setFullName('')
-      setPhone('')
       setRoleName('')
       setRate('')
-      setNotes('')
+      setPhone('')
+      setPaymentType('daily')
       haptic.success()
       await showAlert(t('successSaved', language))
     },
@@ -78,23 +78,47 @@ export default function Workers() {
   })
 
   const attendanceMutation = useMutation({
-    mutationFn: ({ workerId, status, units }: { workerId: string; status: 'present' | 'absent' | 'half_day' | 'custom'; units: number }) =>
-      createAttendance(workerId, { entry_date: new Date().toISOString().slice(0, 10), status, units, comment: undefined }),
-    onSuccess: refresh,
+    mutationFn: ({
+      workerId,
+      status,
+      units,
+    }: {
+      workerId: string
+      status: 'present' | 'absent' | 'half_day' | 'custom'
+      units: number
+    }) => createAttendance(workerId, { entry_date: new Date().toISOString().slice(0, 10), status, units, comment: undefined }),
+    onSuccess: async () => {
+      await refresh()
+      haptic.success()
+    },
     onError: handleError,
   })
 
   const advanceMutation = useMutation({
     mutationFn: ({ workerId, amount }: { workerId: string; amount: number }) =>
-      createWorkerAdvance(workerId, { amount, currency: settings?.default_currency as 'UZS' | 'USD', payment_date: new Date().toISOString().slice(0, 10) }),
-    onSuccess: refresh,
+      createWorkerAdvance(workerId, {
+        amount,
+        currency: (settings?.default_currency || 'UZS') as 'UZS' | 'USD',
+        payment_date: new Date().toISOString().slice(0, 10),
+      }),
+    onSuccess: async () => {
+      await refresh()
+      haptic.success()
+    },
     onError: handleError,
   })
 
   const paymentMutation = useMutation({
     mutationFn: ({ workerId, amount }: { workerId: string; amount: number }) =>
-      createWorkerPayment(workerId, { amount, currency: settings?.default_currency as 'UZS' | 'USD', payment_date: new Date().toISOString().slice(0, 10) }),
-    onSuccess: refresh,
+      createWorkerPayment(workerId, {
+        amount,
+        currency: (settings?.default_currency || 'UZS') as 'UZS' | 'USD',
+        payment_date: new Date().toISOString().slice(0, 10),
+      }),
+    onSuccess: async () => {
+      await refresh()
+      haptic.success()
+    },
     onError: handleError,
   })
 
@@ -111,14 +135,16 @@ export default function Workers() {
   }
 
   const workerSummaryMap = new Map((summaryQuery.data?.workers || []).map((worker) => [worker.worker_id, worker]))
+  const totals = summaryQuery.data?.totals
 
   const submitWorker = async (event: FormEvent) => {
     event.preventDefault()
     const numericRate = Number(rate)
-    if (!fullName.trim() || !numericRate || numericRate < 0) {
+    if (!fullName.trim() || !numericRate || numericRate <= 0) {
       await showAlert(t('requestFailed', language))
       return
     }
+
     await createWorkerMutation.mutateAsync({
       full_name: fullName.trim(),
       phone: phone.trim() || undefined,
@@ -127,17 +153,65 @@ export default function Workers() {
       rate: numericRate,
       currency: (settings?.default_currency || 'UZS') as 'UZS' | 'USD',
       start_date: new Date().toISOString().slice(0, 10),
-      notes: notes.trim() || undefined,
     })
+  }
+
+  const markDailyAttendance = async (workerId: string, status: DailyStatus) => {
+    await attendanceMutation.mutateAsync({ workerId, status, units: 0 })
+  }
+
+  const saveVolumeUnits = async (workerId: string) => {
+    const units = Number(volumeUnits[workerId] || 0)
+    if (!units || units <= 0) {
+      await showAlert(t('requestFailed', language))
+      return
+    }
+    await attendanceMutation.mutateAsync({ workerId, status: 'custom', units })
+    setVolumeUnits((current) => ({ ...current, [workerId]: '' }))
+  }
+
+  const saveAdvance = async (workerId: string) => {
+    const amountValue = Number(advanceAmount[workerId] || 0)
+    if (!amountValue || amountValue <= 0) {
+      await showAlert(t('requestFailed', language))
+      return
+    }
+    await advanceMutation.mutateAsync({ workerId, amount: amountValue })
+    setAdvanceAmount((current) => ({ ...current, [workerId]: '' }))
+  }
+
+  const savePayment = async (workerId: string) => {
+    const amountValue = Number(paymentAmount[workerId] || 0)
+    if (!amountValue || amountValue <= 0) {
+      await showAlert(t('requestFailed', language))
+      return
+    }
+    await paymentMutation.mutateAsync({ workerId, amount: amountValue })
+    setPaymentAmount((current) => ({ ...current, [workerId]: '' }))
   }
 
   return (
     <Page title={t('team', language)} subtitle={settings?.active_group_name || '-'}>
       <Card>
+        <SectionTitle title={t('workers', language)} hint={`${month.start} - ${month.end}`} />
+        <div className="grid grid-cols-2 gap-3">
+          <div className="surface-card-muted px-4 py-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('workers', language)}</p>
+            <p className="mt-2 text-xl font-semibold text-[var(--text)]">{workersQuery.data?.length || 0}</p>
+          </div>
+          <div className="surface-card-muted px-4 py-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('payable', language)}</p>
+            <p className="mt-2 text-lg font-semibold text-[var(--text)]">
+              {formatMoney(Number(totals?.payable_amount || 0), settings?.default_currency || 'UZS', locale)}
+            </p>
+          </div>
+        </div>
+      </Card>
+
+      <Card>
         <SectionTitle title={t('addWorker', language)} />
         <form className="space-y-3" onSubmit={submitWorker}>
           <input className="field" placeholder={t('fullName', language)} value={fullName} onChange={(e) => setFullName(e.target.value)} />
-          <input className="field" placeholder={t('phone', language)} value={phone} onChange={(e) => setPhone(e.target.value)} />
           <input className="field" placeholder={t('roleName', language)} value={roleName} onChange={(e) => setRoleName(e.target.value)} />
           <select className="field" value={paymentType} onChange={(e) => setPaymentType(e.target.value as 'daily' | 'monthly' | 'volume')}>
             <option value="daily">{t('daily', language)}</option>
@@ -145,7 +219,7 @@ export default function Workers() {
             <option value="volume">{t('volume', language)}</option>
           </select>
           <input className="field" inputMode="decimal" placeholder={t('amount', language)} value={rate} onChange={(e) => setRate(e.target.value)} />
-          <textarea className="field min-h-[88px]" placeholder={t('note', language)} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          <input className="field" placeholder={t('phone', language)} value={phone} onChange={(e) => setPhone(e.target.value)} />
           <button type="submit" className="primary-button w-full" disabled={createWorkerMutation.isPending}>
             {createWorkerMutation.isPending ? t('loading', language) : t('save', language)}
           </button>
@@ -153,121 +227,92 @@ export default function Workers() {
       </Card>
 
       <Card>
-        <SectionTitle title={t('workers', language)} hint={`${month.start} → ${month.end}`} />
+        <SectionTitle title={t('workers', language)} />
         {workersQuery.data?.length ? (
           <div className="space-y-3">
             {workersQuery.data.map((worker) => {
               const summary = workerSummaryMap.get(worker.id)
-              const status = attendanceStatus[worker.id] || 'present'
               return (
                 <div key={worker.id} className="surface-card-muted px-4 py-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
-                      <p className="text-sm font-semibold text-[var(--text)]">{worker.full_name}</p>
-                      <p className="mt-1 text-xs text-[var(--text-soft)]">
-                        {worker.role_name || '-'} · {t(worker.payment_type, language)} · {formatMoney(worker.rate, worker.currency, locale)}
+                      <p className="text-base font-semibold text-[var(--text)]">{worker.full_name}</p>
+                      <p className="mt-1 text-sm text-[var(--text-soft)]">
+                        {worker.role_name || '-'} - {t(worker.payment_type, language)}
+                      </p>
+                      <p className="mt-1 text-sm text-[var(--text-soft)]">
+                        {formatMoney(Number(worker.rate), worker.currency, locale)}
                       </p>
                     </div>
-                    <div className="text-right text-xs text-[var(--text-soft)]">
-                      <p>{t('payable', language)}</p>
-                      <p className="mt-1 text-sm font-semibold text-[var(--text)]">
+                    <div className="text-right">
+                      <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('payable', language)}</p>
+                      <p className="mt-2 text-lg font-semibold text-[var(--text)]">
                         {summary ? formatMoney(summary.payable_amount, summary.currency, locale) : '-'}
                       </p>
                     </div>
                   </div>
 
                   {summary ? (
-                    <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-[var(--text-soft)]">
-                      <div className="rounded-2xl border border-[var(--border)] px-3 py-3">
-                        <p>{t('advances', language)}</p>
-                        <p className="mt-1 font-semibold text-[var(--text)]">{formatMoney(summary.advances_amount, summary.currency, locale)}</p>
-                      </div>
-                      <div className="rounded-2xl border border-[var(--border)] px-3 py-3">
-                        <p>{t('payments', language)}</p>
-                        <p className="mt-1 font-semibold text-[var(--text)]">{formatMoney(summary.paid_amount, summary.currency, locale)}</p>
-                      </div>
-                      <div className="rounded-2xl border border-[var(--border)] px-3 py-3">
-                        <p>Status</p>
-                        <p className="mt-1 font-semibold capitalize text-[var(--text)]">{summary.status}</p>
-                      </div>
+                    <div className="mt-3 space-y-1 text-sm text-[var(--text-soft)]">
+                      <p>{t('advances', language)}: <span className="font-semibold text-[var(--text)]">{formatMoney(summary.advances_amount, summary.currency, locale)}</span></p>
+                      <p>{t('payments', language)}: <span className="font-semibold text-[var(--text)]">{formatMoney(summary.paid_amount, summary.currency, locale)}</span></p>
                     </div>
                   ) : null}
 
                   <div className="mt-4 space-y-3">
-                    <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                      {(['present', 'absent', 'half_day', 'custom'] as const).map((item) => (
-                        <button
-                          key={item}
-                          type="button"
-                          className={`pill-button ${status === item ? 'active' : ''}`}
-                          onClick={() => setAttendanceStatus((current) => ({ ...current, [worker.id]: item }))}
-                        >
-                          {item === 'present'
-                            ? t('present', language)
-                            : item === 'absent'
-                              ? t('absent', language)
-                              : item === 'half_day'
-                                ? t('halfDay', language)
-                                : t('customUnits', language)}
+                    {worker.payment_type === 'daily' ? (
+                      <div className="grid grid-cols-3 gap-2">
+                        <button type="button" className="secondary-button w-full" onClick={() => void markDailyAttendance(worker.id, 'present')}>
+                          {t('present', language)}
                         </button>
-                      ))}
-                    </div>
-                    {status === 'custom' ? (
+                        <button type="button" className="secondary-button w-full" onClick={() => void markDailyAttendance(worker.id, 'half_day')}>
+                          {t('halfDay', language)}
+                        </button>
+                        <button type="button" className="secondary-button w-full" onClick={() => void markDailyAttendance(worker.id, 'absent')}>
+                          {t('absent', language)}
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {worker.payment_type === 'volume' ? (
+                      <div className="grid grid-cols-[1fr_auto] gap-2">
+                        <input
+                          className="field"
+                          inputMode="decimal"
+                          placeholder={t('customUnits', language)}
+                          value={volumeUnits[worker.id] || ''}
+                          onChange={(e) => setVolumeUnits((current) => ({ ...current, [worker.id]: e.target.value }))}
+                        />
+                        <button type="button" className="secondary-button min-w-[110px]" onClick={() => void saveVolumeUnits(worker.id)}>
+                          {t('save', language)}
+                        </button>
+                      </div>
+                    ) : null}
+
+                    <div className="grid grid-cols-[1fr_auto] gap-2">
                       <input
                         className="field"
                         inputMode="decimal"
-                        placeholder={t('customUnits', language)}
-                        value={attendanceUnits[worker.id] || ''}
-                        onChange={(e) => setAttendanceUnits((current) => ({ ...current, [worker.id]: e.target.value }))}
+                        placeholder={t('advances', language)}
+                        value={advanceAmount[worker.id] || ''}
+                        onChange={(e) => setAdvanceAmount((current) => ({ ...current, [worker.id]: e.target.value }))}
                       />
-                    ) : null}
-                    <button
-                      type="button"
-                      className="secondary-button w-full"
-                      onClick={() =>
-                        attendanceMutation.mutate({
-                          workerId: worker.id,
-                          status,
-                          units: status === 'custom' ? Number(attendanceUnits[worker.id] || 0) : 0,
-                        })
-                      }
-                    >
-                      {t('recordAttendance', language)}
-                    </button>
+                      <button type="button" className="secondary-button min-w-[110px]" onClick={() => void saveAdvance(worker.id)}>
+                        {t('recordAdvance', language)}
+                      </button>
+                    </div>
 
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <div className="space-y-2">
-                        <input
-                          className="field"
-                          inputMode="decimal"
-                          placeholder={t('advances', language)}
-                          value={advanceAmount[worker.id] || ''}
-                          onChange={(e) => setAdvanceAmount((current) => ({ ...current, [worker.id]: e.target.value }))}
-                        />
-                        <button
-                          type="button"
-                          className="secondary-button w-full"
-                          onClick={() => advanceMutation.mutate({ workerId: worker.id, amount: Number(advanceAmount[worker.id] || 0) })}
-                        >
-                          {t('recordAdvance', language)}
-                        </button>
-                      </div>
-                      <div className="space-y-2">
-                        <input
-                          className="field"
-                          inputMode="decimal"
-                          placeholder={t('payments', language)}
-                          value={paymentAmount[worker.id] || ''}
-                          onChange={(e) => setPaymentAmount((current) => ({ ...current, [worker.id]: e.target.value }))}
-                        />
-                        <button
-                          type="button"
-                          className="primary-button w-full"
-                          onClick={() => paymentMutation.mutate({ workerId: worker.id, amount: Number(paymentAmount[worker.id] || 0) })}
-                        >
-                          {t('recordPayment', language)}
-                        </button>
-                      </div>
+                    <div className="grid grid-cols-[1fr_auto] gap-2">
+                      <input
+                        className="field"
+                        inputMode="decimal"
+                        placeholder={t('payments', language)}
+                        value={paymentAmount[worker.id] || ''}
+                        onChange={(e) => setPaymentAmount((current) => ({ ...current, [worker.id]: e.target.value }))}
+                      />
+                      <button type="button" className="primary-button min-w-[110px]" onClick={() => void savePayment(worker.id)}>
+                        {t('recordPayment', language)}
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -281,3 +326,5 @@ export default function Workers() {
     </Page>
   )
 }
+
+

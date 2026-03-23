@@ -56,7 +56,7 @@ function App() {
             <Route path="/admin" element={canManageAdmin ? <AdminPanel /> : <Navigate to="/settings" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-          <BottomNav canSeeTeam={canManageAdmin} />
+          <BottomNav />
         </div>
       </div>
     </BrowserRouter>
