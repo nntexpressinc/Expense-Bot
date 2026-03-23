@@ -310,11 +310,15 @@ async def init_db():
                 text(
                     """
                     INSERT INTO categories (name, type, icon, is_system)
-                    SELECT :name, CAST(:cat_type AS category_type), :icon, TRUE
+                    SELECT
+                        CAST(:name AS VARCHAR(255)),
+                        CAST(:cat_type AS category_type),
+                        CAST(:icon AS VARCHAR(32)),
+                        TRUE
                     WHERE NOT EXISTS (
                         SELECT 1
                         FROM categories
-                        WHERE name = :name
+                        WHERE name = CAST(:name AS VARCHAR(255))
                           AND type = CAST(:cat_type AS category_type)
                           AND is_system = TRUE
                           AND user_id IS NULL
