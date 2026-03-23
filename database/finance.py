@@ -430,7 +430,7 @@ async def apply_debt_repayment(
     converted_amount = await convert_amount(db, amount, payment_currency, debt.currency)
     remaining_native = _to_decimal(debt.remaining_amount)
     if converted_amount > remaining_native:
-        converted_amount = remaining_native
+        raise ValueError("Repayment amount exceeds the remaining debt")
 
     debt.remaining_amount = (remaining_native - converted_amount).quantize(MONEY_QUANT, rounding=ROUND_HALF_UP)
     recalculate_debt_status(debt)

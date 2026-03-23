@@ -105,8 +105,13 @@ export default function Debts() {
 
   const submitPay = async (debtId: string) => {
     const numericAmount = Number(payAmounts[debtId])
+    const debt = sortedDebts.find((item) => item.id === debtId)
     if (!numericAmount || numericAmount <= 0) {
       await showAlert(t('requestFailed', language))
+      return
+    }
+    if (debt && numericAmount > debt.remaining) {
+      await showAlert(`${t('repaymentTooHigh', language)}. Max: ${formatMoney(debt.remaining, debt.currency, locale)}`)
       return
     }
     await payMutation.mutateAsync({ debtId, amountValue: numericAmount })
@@ -148,6 +153,7 @@ export default function Debts() {
           <input
             className="field"
             inputMode="decimal"
+            max={String(debt.remaining)}
             placeholder={t('amount', language)}
             value={payAmounts[debt.id] || ''}
             onChange={(e) => setPayAmounts((current) => ({ ...current, [debt.id]: e.target.value }))}

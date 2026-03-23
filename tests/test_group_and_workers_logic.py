@@ -2,7 +2,9 @@ from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
-from database.finance import calculate_available_debt_source_native, normalize_debt_kind
+import pytest
+
+from database.finance import apply_debt_repayment, calculate_available_debt_source_native, normalize_debt_kind
 from database.group_context import normalize_group_role, normalize_lang, normalize_theme
 from database.workers import attendance_units
 
@@ -69,3 +71,35 @@ def test_attendance_units_supports_daily_half_day_and_custom():
 def test_worker_period_inputs_are_plain_dates():
     today = date.today()
     assert isinstance(today, date)
+
+
+@pytest.mark.asyncio
+async def test_apply_debt_repayment_rejects_amount_above_remaining():
+    class DummyDb:
+        def add(self, _item):
+            return None
+
+        async def flush(self):
+            return None
+
+    debt = SimpleNamespace(
+        id="debt-1",
+        group_id=1,
+        currency="USD",
+        remaining_amount=Decimal("40"),
+        amount=Decimal("100"),
+        archived_at=None,
+        paid_at=None,
+        status="active",
+    )
+    user = SimpleNamespace(id=1, default_currency="USD")
+
+    with pytest.raises(ValueError, match="exceeds the remaining debt"):
+        await apply_debt_repayment(
+            DummyDb(),
+            debt=debt,
+            user=user,
+            amount=Decimal("50"),
+            currency="USD",
+            note=None,
+        )

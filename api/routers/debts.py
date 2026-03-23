@@ -255,15 +255,37 @@ async def pay_debt_endpoint(
                 f"Insufficient main balance. Available: {spendable_main} {payment_currency}",
             ),
         )
+    max_repayment_amount = await convert_amount(db, debt.remaining_amount, debt.currency, payment_currency)
+    if payload.amount > max_repayment_amount:
+        raise HTTPException(
+            status_code=400,
+            detail=_t(
+                lang,
+                f"Qaytarish summasi qarz qoldig'idan katta bo'lishi mumkin emas. Maksimal: {max_repayment_amount} {payment_currency}",
+                f"Сумма погашения не может быть больше остатка долга. Максимум: {max_repayment_amount} {payment_currency}",
+                f"Repayment amount cannot be greater than the remaining debt. Maximum: {max_repayment_amount} {payment_currency}",
+            ),
+        )
 
-    repayment = await apply_debt_repayment(
-        db,
-        debt=debt,
-        user=current_user,
-        amount=payload.amount,
-        currency=payment_currency,
-        note=payload.note,
-    )
+    try:
+        repayment = await apply_debt_repayment(
+            db,
+            debt=debt,
+            user=current_user,
+            amount=payload.amount,
+            currency=payment_currency,
+            note=payload.note,
+        )
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=_t(
+                lang,
+                f"Qaytarish summasi qarz qoldig'idan katta bo'lishi mumkin emas. Maksimal: {max_repayment_amount} {payment_currency}",
+                f"Сумма погашения не может быть больше остатка долга. Максимум: {max_repayment_amount} {payment_currency}",
+                f"Repayment amount cannot be greater than the remaining debt. Maximum: {max_repayment_amount} {payment_currency}",
+            ),
+        ) from None
     if Decimal(str(debt.remaining_amount)) <= 0 and not debt.paid_at:
         debt.paid_at = datetime.now(timezone.utc)
     recalculate_debt_status(debt)
