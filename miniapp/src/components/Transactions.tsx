@@ -187,7 +187,11 @@ export default function Transactions() {
               ) : null}
               {needsDebtFallback || fundingSource === 'debt' ? (
                 <>
-                  {openDebts.length ? (
+                  {debtsQuery.isError ? (
+                    <div className="rounded-2xl border border-[var(--border)] px-4 py-3 text-sm text-[var(--text-soft)]">
+                      {t('notLoaded', language)}. {t('retry', language)}.
+                    </div>
+                  ) : openDebts.length ? (
                     <select className="field" value={debtId} onChange={(e) => setDebtId(e.target.value)}>
                       <option value="">{t('selectDebt', language)}</option>
                       {openDebts.map((debt) => (

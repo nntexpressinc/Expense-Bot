@@ -22,8 +22,6 @@ export default function Debts() {
   const [description, setDescription] = useState('')
   const [sourceName, setSourceName] = useState('')
   const [sourceContact, setSourceContact] = useState('')
-  const [reference, setReference] = useState('')
-  const [note, setNote] = useState('')
   const [payAmounts, setPayAmounts] = useState<Record<string, string>>({})
 
   const debtsQuery = useQuery({
@@ -44,8 +42,6 @@ export default function Debts() {
       setDescription('')
       setSourceName('')
       setSourceContact('')
-      setReference('')
-      setNote('')
       setKind('cash_loan')
       haptic.success()
       await showAlert(t('successSaved', language))
@@ -104,8 +100,6 @@ export default function Debts() {
       description: description.trim() || undefined,
       source_name: sourceName.trim() || undefined,
       source_contact: sourceContact.trim() || undefined,
-      reference: reference.trim() || undefined,
-      note: note.trim() || undefined,
     })
   }
 
@@ -135,7 +129,6 @@ export default function Debts() {
           <p className="mt-1 text-xs text-[var(--text-soft)]">{formatDateTime(debt.created_at, language)}</p>
           {debt.source_name ? <p className="mt-2 text-sm text-[var(--text-soft)]">{t('sourceName', language)}: {debt.source_name}</p> : null}
           {debt.source_contact ? <p className="mt-1 text-sm text-[var(--text-soft)]">{t('sourceContact', language)}: {debt.source_contact}</p> : null}
-          {debt.note ? <p className="mt-1 text-sm text-[var(--text-soft)]">{debt.note}</p> : null}
           <p className="mt-2 text-xs text-[var(--text-muted)]">
             {debt.kind === 'cash_loan'
               ? `${t('availableToSpend', language)}: ${formatMoney(debt.available_to_spend || 0, debt.currency, locale)}`
@@ -187,8 +180,6 @@ export default function Debts() {
           <input className="field" placeholder={t('description', language)} value={description} onChange={(e) => setDescription(e.target.value)} />
           <input className="field" placeholder={t('sourceName', language)} value={sourceName} onChange={(e) => setSourceName(e.target.value)} />
           <input className="field" placeholder={t('sourceContact', language)} value={sourceContact} onChange={(e) => setSourceContact(e.target.value)} />
-          <input className="field" placeholder={t('reference', language)} value={reference} onChange={(e) => setReference(e.target.value)} />
-          <textarea className="field min-h-[88px]" placeholder={t('note', language)} value={note} onChange={(e) => setNote(e.target.value)} />
           <button type="submit" className="primary-button w-full" disabled={createMutation.isPending}>
             {createMutation.isPending ? t('loading', language) : t('save', language)}
           </button>
@@ -197,12 +188,20 @@ export default function Debts() {
 
       <Card>
         <SectionTitle title={t('cashLoan', language)} />
-        {cashLoans.length ? <div className="space-y-3">{cashLoans.map(renderDebtCard)}</div> : <EmptyState title={t('noDebts', language)} hint={t('cashLoanHint', language)} />}
+        {debtsQuery.isError ? (
+          <EmptyState title={t('notLoaded', language)} hint={t('retry', language)} />
+        ) : cashLoans.length ? (
+          <div className="space-y-3">{cashLoans.map(renderDebtCard)}</div>
+        ) : (
+          <EmptyState title={t('noDebts', language)} hint={t('cashLoanHint', language)} />
+        )}
       </Card>
 
       <Card>
         <SectionTitle title={t('creditPurchase', language)} />
-        {creditPurchases.length ? (
+        {debtsQuery.isError ? (
+          <EmptyState title={t('notLoaded', language)} hint={t('retry', language)} />
+        ) : creditPurchases.length ? (
           <div className="space-y-3">{creditPurchases.map(renderDebtCard)}</div>
         ) : (
           <EmptyState title={t('noDebtSources', language)} hint={t('creditPurchaseHint', language)} />

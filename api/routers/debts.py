@@ -19,7 +19,7 @@ from database.finance import (
     recalculate_debt_status,
 )
 from database.group_context import get_active_group_id
-from database.models import Debt, Transaction, TransactionType, User
+from database.models import Debt, DebtRepayment, Transaction, TransactionType, User
 from database.session import get_db
 
 router = APIRouter(prefix="/debts")
@@ -91,8 +91,15 @@ async def _serialize_debt(
 ) -> dict:
     debt_kind = normalize_debt_kind(getattr(debt, "kind", None))
     available_to_spend = await get_available_debt_for_entry(db, debt, target_currency)
+    repayment_rows = (
+        await db.execute(
+            select(DebtRepayment)
+            .where(DebtRepayment.debt_id == debt.id)
+            .order_by(desc(DebtRepayment.repaid_at))
+        )
+    ).scalars().all()
     repayments = []
-    for repayment in sorted(debt.repayments, key=lambda item: item.repaid_at or datetime.min.replace(tzinfo=timezone.utc), reverse=True):
+    for repayment in repayment_rows:
         amount_display = await convert_amount(db, repayment.amount, repayment.currency, target_currency)
         converted_display = await convert_amount(db, repayment.converted_amount, debt.currency, target_currency)
         repayments.append(
@@ -173,6 +180,7 @@ async def create_debt_endpoint(
         status="active",
     )
     db.add(debt)
+    await db.flush()
 
     db.add(
         Transaction(
@@ -186,6 +194,7 @@ async def create_debt_endpoint(
             debt_kind=debt_kind,
         )
     )
+    await db.flush()
 
     await write_audit_log(
         db,
@@ -270,6 +279,7 @@ async def pay_debt_endpoint(
             funding_source="main",
         )
     )
+    await db.flush()
 
     await write_audit_log(
         db,
