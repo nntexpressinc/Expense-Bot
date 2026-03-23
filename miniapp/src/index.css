@@ -138,6 +138,18 @@ button {
   transition: border-color 160ms ease, background 160ms ease;
 }
 
+select.field {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: var(--surface-strong);
+}
+
+select.field option,
+select.field optgroup {
+  background: #ffffff;
+  color: #111111;
+}
+
 .field::placeholder {
   color: var(--text-muted);
 }
