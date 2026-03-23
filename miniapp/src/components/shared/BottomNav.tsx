@@ -81,7 +81,7 @@ export default function BottomNav() {
               }}
             >
               <Icon name={item.icon} />
-              <span className="mt-1 text-[11px] font-medium">{item.label}</span>
+              <span className="mt-1 px-1 text-center text-[10px] font-medium leading-[1.1]">{item.label}</span>
             </Link>
           )
         })}

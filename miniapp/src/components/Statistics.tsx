@@ -78,14 +78,14 @@ export default function Statistics() {
             <p className="mt-2 text-lg font-semibold text-[var(--text)]">{formatMoney(stats.total_expense, displayCurrency, locale)}</p>
           </div>
           <div className="surface-card-muted px-4 py-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">Net</p>
+            <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('net', language)}</p>
             <p className="mt-2 text-lg font-semibold text-[var(--text)]">{formatMoney(stats.difference, displayCurrency, locale)}</p>
           </div>
         </div>
       </Card>
 
       <Card>
-        <SectionTitle title={t('statistics', language)} hint="Top categories" />
+        <SectionTitle title={t('statistics', language)} hint={t('topCategories', language)} />
         {stats.top_categories.length ? (
           <div className="space-y-3">
             {stats.top_categories.map((category, index) => (

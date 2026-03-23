@@ -20,8 +20,8 @@ export const Card = ({ children, className = '' }: PropsWithChildren<{ className
 )
 
 export const SectionTitle = ({ title, hint }: { title: string; hint?: string }) => (
-  <div className="mb-3 flex items-end justify-between gap-3">
-    <h2 className="text-base font-semibold text-[var(--text)]">{title}</h2>
+  <div className="mb-3 flex flex-col items-start gap-1 sm:flex-row sm:items-end sm:justify-between">
+    <h2 className="text-base font-semibold leading-tight text-[var(--text)]">{title}</h2>
     {hint ? <span className="text-xs text-[var(--text-muted)]">{hint}</span> : null}
   </div>
 )
