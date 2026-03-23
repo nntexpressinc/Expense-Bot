@@ -66,18 +66,6 @@ export default function Dashboard() {
               {formatMoney(balance.debt_balance, balance.currency, locale)}
             </p>
           </div>
-          <div className="surface-card-muted px-4 py-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('ownBalance', language)}</p>
-            <p className="mt-2 text-lg font-semibold text-[var(--text)]">
-              {formatMoney(balance.own_balance, balance.currency, locale)}
-            </p>
-          </div>
-          <div className="surface-card-muted px-4 py-4">
-            <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('receivedBalance', language)}</p>
-            <p className="mt-2 text-lg font-semibold text-[var(--text)]">
-              {formatMoney(balance.received_balance, balance.currency, locale)}
-            </p>
-          </div>
         </div>
         <div className="mt-3 rounded-2xl border border-[var(--border)] px-4 py-3 text-sm text-[var(--text-soft)]">
           {t('outstandingDebt', language)}: <span className="font-semibold text-[var(--text)]">{formatMoney(balance.outstanding_debt_balance, balance.currency, locale)}</span>
