@@ -5,6 +5,7 @@ import { useAppSettings } from '@/hooks/useAppSettings'
 import { useTelegram } from '@/hooks/useTelegram'
 import { t } from '@/i18n'
 import { formatDateTime, formatMoney } from '@/lib/format'
+import { getTransactionDisplayTitle, shouldShowTransactionDescription } from '@/lib/transactionDisplay'
 import { Card, Page, SectionTitle } from '@/components/shared/Page'
 import { EmptyState, LoadingState } from '@/components/shared/States'
 
@@ -14,20 +15,21 @@ const transactionTitle = (
   transaction: {
     type: string
     debt_kind?: 'cash_loan' | 'credit_purchase' | null
+    description?: string
     category?: { icon?: string; name?: string }
   },
   language: 'uz' | 'ru' | 'en',
 ) => {
-  if (transaction.category?.name) {
-    return `${transaction.category.icon ? `${transaction.category.icon} ` : ''}${transaction.category.name}`
-  }
-  if (transaction.type === 'debt') {
-    return transaction.debt_kind === 'cash_loan' ? t('cashLoan', language) : t('creditPurchase', language)
-  }
-  if (transaction.type === 'debt_payment') {
-    return t('pay', language)
-  }
-  return transaction.type
+  const fallbackTitle =
+    transaction.type === 'debt'
+      ? transaction.debt_kind === 'cash_loan'
+        ? t('cashLoan', language)
+        : t('creditPurchase', language)
+      : transaction.type === 'debt_payment'
+        ? t('pay', language)
+        : transaction.type
+
+  return getTransactionDisplayTitle(transaction, fallbackTitle)
 }
 
 const transactionPrefix = (transaction: { type: string; debt_kind?: 'cash_loan' | 'credit_purchase' | null }) => {
@@ -219,51 +221,55 @@ export default function Transactions() {
         </div>
         {transactionsQuery.data?.length ? (
           <div className="space-y-3">
-            {transactionsQuery.data.map((transaction) => (
-              <div key={transaction.id} className="surface-card-muted px-4 py-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-[var(--text)]">{transactionTitle(transaction, language)}</p>
-                    <p className="mt-1 text-xs text-[var(--text-soft)]">{formatDateTime(transaction.transaction_date, language)}</p>
-                    {transaction.description ? <p className="mt-2 text-sm text-[var(--text-soft)]">{transaction.description}</p> : null}
-                    {transaction.type === 'debt' ? (
-                      <p className="mt-1 text-xs text-[var(--text-muted)]">
-                        {transaction.debt_kind === 'cash_loan' ? t('cashLoanHint', language) : t('creditPurchaseHint', language)}
+            {transactionsQuery.data.map((transaction) => {
+              const title = transactionTitle(transaction, language)
+
+              return (
+                <div key={transaction.id} className="surface-card-muted px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-[var(--text)]">{title}</p>
+                      <p className="mt-1 text-xs text-[var(--text-soft)]">{formatDateTime(transaction.transaction_date, language)}</p>
+                      {shouldShowTransactionDescription(transaction, title) ? <p className="mt-2 text-sm text-[var(--text-soft)]">{transaction.description}</p> : null}
+                      {transaction.type === 'debt' ? (
+                        <p className="mt-1 text-xs text-[var(--text-muted)]">
+                          {transaction.debt_kind === 'cash_loan' ? t('cashLoanHint', language) : t('creditPurchaseHint', language)}
+                        </p>
+                      ) : null}
+                      {transaction.funding_source ? (
+                        <p className="mt-1 text-xs text-[var(--text-muted)]">
+                          {transaction.funding_source === 'debt' && transaction.main_used_amount
+                            ? t('mainAndDebtSource', language)
+                            : transaction.funding_source === 'debt'
+                              ? t('debtSource', language)
+                              : t('mainSource', language)}
+                        </p>
+                      ) : null}
+                      {transaction.debt_source_name ? (
+                        <p className="mt-1 text-xs text-[var(--text-muted)]">
+                          {t('sourceName', language)}: {transaction.debt_source_name}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-[var(--text)]">
+                        {transactionPrefix(transaction)}
+                        {formatMoney(transaction.amount, transaction.currency, locale)}
                       </p>
-                    ) : null}
-                    {transaction.funding_source ? (
-                      <p className="mt-1 text-xs text-[var(--text-muted)]">
-                        {transaction.funding_source === 'debt' && transaction.main_used_amount
-                          ? t('mainAndDebtSource', language)
-                          : transaction.funding_source === 'debt'
-                            ? t('debtSource', language)
-                            : t('mainSource', language)}
-                      </p>
-                    ) : null}
-                    {transaction.debt_source_name ? (
-                      <p className="mt-1 text-xs text-[var(--text-muted)]">
-                        {t('sourceName', language)}: {transaction.debt_source_name}
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-semibold text-[var(--text)]">
-                      {transactionPrefix(transaction)}
-                      {formatMoney(transaction.amount, transaction.currency, locale)}
-                    </p>
-                    {(transaction.type === 'income' || transaction.type === 'expense') ? (
-                      <button
-                        type="button"
-                        className="mt-2 text-xs text-[var(--danger)]"
-                        onClick={() => deleteMutation.mutate(transaction.id)}
-                      >
-                        Delete
-                      </button>
-                    ) : null}
+                      {(transaction.type === 'income' || transaction.type === 'expense') ? (
+                        <button
+                          type="button"
+                          className="mt-2 text-xs text-[var(--danger)]"
+                          onClick={() => deleteMutation.mutate(transaction.id)}
+                        >
+                          Delete
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         ) : (
           <EmptyState title={t('noOperations', language)} />

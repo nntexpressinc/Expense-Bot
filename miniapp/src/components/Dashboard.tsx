@@ -4,6 +4,7 @@ import { getBalance, getTransactions } from '@/api/endpoints'
 import { useAppSettings } from '@/hooks/useAppSettings'
 import { t } from '@/i18n'
 import { formatDateTime, formatMoney } from '@/lib/format'
+import { getTransactionDisplayTitle, shouldShowTransactionDescription } from '@/lib/transactionDisplay'
 import { Card, Page, SectionTitle } from '@/components/shared/Page'
 import { EmptyState, LoadingState } from '@/components/shared/States'
 
@@ -121,48 +122,51 @@ export default function Dashboard() {
         <SectionTitle title={t('recentOperations', language)} />
         {recentTransactions.length ? (
           <div className="space-y-3">
-            {recentTransactions.map((transaction) => (
-              <div key={transaction.id} className="surface-card-muted px-4 py-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-[var(--text)]">
-                      {transaction.category?.name ||
-                        (transaction.type === 'debt'
-                          ? transaction.debt_kind === 'cash_loan'
-                            ? t('cashLoan', language)
-                            : t('creditPurchase', language)
-                          : transactionTypeLabel(transaction.type, language))}
-                    </p>
-                    <p className="mt-1 text-xs text-[var(--text-soft)]">
-                      {formatDateTime(transaction.transaction_date, language)}
-                    </p>
-                    {transaction.description ? (
-                      <p className="mt-2 text-sm text-[var(--text-soft)]">{transaction.description}</p>
-                    ) : null}
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-semibold text-[var(--text)]">
-                      {transactionPrefix(transaction)}
-                      {formatMoney(transaction.amount, transaction.currency, locale)}
-                    </p>
-                    {transaction.funding_source ? (
-                      <p className="mt-1 text-xs text-[var(--text-muted)]">
-                        {transaction.funding_source === 'debt' && transaction.main_used_amount
-                          ? t('mainAndDebtSource', language)
-                          : transaction.funding_source === 'debt'
-                            ? t('debtSource', language)
-                            : t('mainSource', language)}
+            {recentTransactions.map((transaction) => {
+              const fallbackTitle =
+                transaction.type === 'debt'
+                  ? transaction.debt_kind === 'cash_loan'
+                    ? t('cashLoan', language)
+                    : t('creditPurchase', language)
+                  : transactionTypeLabel(transaction.type, language)
+              const title = getTransactionDisplayTitle(transaction, fallbackTitle)
+
+              return (
+                <div key={transaction.id} className="surface-card-muted px-4 py-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-[var(--text)]">{title}</p>
+                      <p className="mt-1 text-xs text-[var(--text-soft)]">
+                        {formatDateTime(transaction.transaction_date, language)}
                       </p>
-                    ) : null}
-                    {transaction.debt_source_name ? (
-                      <p className="mt-1 text-xs text-[var(--text-muted)]">
-                        {t('sourceName', language)}: {transaction.debt_source_name}
+                      {shouldShowTransactionDescription(transaction, title) ? (
+                        <p className="mt-2 text-sm text-[var(--text-soft)]">{transaction.description}</p>
+                      ) : null}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-semibold text-[var(--text)]">
+                        {transactionPrefix(transaction)}
+                        {formatMoney(transaction.amount, transaction.currency, locale)}
                       </p>
-                    ) : null}
+                      {transaction.funding_source ? (
+                        <p className="mt-1 text-xs text-[var(--text-muted)]">
+                          {transaction.funding_source === 'debt' && transaction.main_used_amount
+                            ? t('mainAndDebtSource', language)
+                            : transaction.funding_source === 'debt'
+                              ? t('debtSource', language)
+                              : t('mainSource', language)}
+                        </p>
+                      ) : null}
+                      {transaction.debt_source_name ? (
+                        <p className="mt-1 text-xs text-[var(--text-muted)]">
+                          {t('sourceName', language)}: {transaction.debt_source_name}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         ) : (
           <EmptyState title={t('noOperations', language)} />
