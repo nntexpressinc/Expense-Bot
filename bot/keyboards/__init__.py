@@ -81,7 +81,11 @@ def get_currency_keyboard() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def get_settings_keyboard(lang: str = 'uz', is_admin: bool = False) -> InlineKeyboardMarkup:
+def get_settings_keyboard(
+    lang: str = 'uz',
+    is_admin: bool = False,
+    can_switch_group: bool = False,
+) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(text=f"🌐 {get_text('msg_select_language', lang)}", callback_data='settings_language')
@@ -89,6 +93,10 @@ def get_settings_keyboard(lang: str = 'uz', is_admin: bool = False) -> InlineKey
     builder.row(
         InlineKeyboardButton(text=f"💱 {get_text('msg_select_currency', lang)}", callback_data='settings_currency')
     )
+    if can_switch_group:
+        builder.row(
+            InlineKeyboardButton(text=get_text('btn_switch_group', lang), callback_data='settings_group')
+        )
 
     if is_admin:
         builder.row(
@@ -124,6 +132,23 @@ def get_categories_keyboard(
 
     builder.adjust(row_width)
     builder.row(InlineKeyboardButton(text=get_text('btn_cancel', lang), callback_data='cancel'))
+    return builder.as_markup()
+
+
+def get_groups_keyboard(groups: list[dict], active_group_id: int | None, lang: str = 'uz') -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+
+    for group in groups:
+        is_active = group.get('id') == active_group_id
+        prefix = '✅ ' if is_active else '🏢 '
+        builder.row(
+            InlineKeyboardButton(
+                text=f"{prefix}{group.get('name', group.get('id'))}",
+                callback_data=f"settings_group_{group['id']}",
+            )
+        )
+
+    builder.row(InlineKeyboardButton(text=get_text('btn_back', lang), callback_data='settings_menu'))
     return builder.as_markup()
 
 

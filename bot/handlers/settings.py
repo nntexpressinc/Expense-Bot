@@ -11,14 +11,17 @@ from aiogram.types import CallbackQuery, Message
 from bot.keyboards import (
     get_admin_keyboard,
     get_currency_keyboard,
+    get_groups_keyboard,
     get_language_keyboard,
     get_main_menu_keyboard,
     get_settings_keyboard,
 )
 from bot.services.finance import (
     get_or_create_user,
+    get_user_groups,
     is_admin,
     read_exchange_rate,
+    set_user_active_group,
     set_user_currency,
     set_user_language,
     update_exchange_rate,
@@ -52,16 +55,38 @@ def _tr(lang: str, uz: str, ru: str, en: str) -> str:
     return uz
 
 
+async def _settings_payload(source_user) -> tuple:
+    user = await get_or_create_user(
+        telegram_id=source_user.id,
+        username=source_user.username,
+        first_name=source_user.first_name,
+        last_name=source_user.last_name,
+        language_code=source_user.language_code,
+    )
+    groups = await get_user_groups(user.id)
+    active_group = next((group for group in groups if group.get('id') == user.active_group_id), None)
+    return user, groups, active_group
+
+
+def _settings_text(lang: str, active_group_name: str | None) -> str:
+    base = get_text('msg_settings', lang)
+    if not active_group_name:
+        return base
+    return f"{base}\n\n{get_text('msg_active_group', lang)}: <b>{active_group_name}</b>"
+
+
 @router.message(Command('settings'))
 @router.message(F.text.in_([get_text('btn_settings', 'uz'), get_text('btn_settings', 'ru'), get_text('btn_settings', 'en')]))
 async def cmd_settings(message: Message, state: FSMContext):
     await state.clear()
     user = await _load_user(message)
     user_is_admin = await is_admin(user.id)
+    groups = await get_user_groups(user.id)
+    active_group = next((group for group in groups if group.get('id') == user.active_group_id), None)
 
     await message.answer(
-        get_text('msg_settings', user.language_code),
-        reply_markup=get_settings_keyboard(user.language_code, user_is_admin),
+        _settings_text(user.language_code, active_group.get('name') if active_group else None),
+        reply_markup=get_settings_keyboard(user.language_code, user_is_admin, can_switch_group=len(groups) > 1),
     )
 
 
@@ -87,10 +112,12 @@ async def cmd_currency(message: Message):
 async def callback_settings_menu(callback: CallbackQuery):
     user = await _load_user(callback)
     user_is_admin = await is_admin(user.id)
+    groups = await get_user_groups(user.id)
+    active_group = next((group for group in groups if group.get('id') == user.active_group_id), None)
 
     await callback.message.edit_text(
-        get_text('msg_settings', user.language_code),
-        reply_markup=get_settings_keyboard(user.language_code, user_is_admin),
+        _settings_text(user.language_code, active_group.get('name') if active_group else None),
+        reply_markup=get_settings_keyboard(user.language_code, user_is_admin, can_switch_group=len(groups) > 1),
     )
     await callback.answer()
 
@@ -126,6 +153,74 @@ async def callback_currency_selection(callback: CallbackQuery):
     await callback.message.edit_text(
         get_text('msg_select_currency', user.language_code),
         reply_markup=get_currency_keyboard(),
+    )
+    await callback.answer()
+
+
+@router.message(Command('group'))
+async def cmd_group(message: Message):
+    user, groups, active_group = await _settings_payload(message.from_user)
+    lang = user.language_code
+
+    if not groups:
+        await message.answer(get_text('msg_no_groups', lang))
+        return
+
+    if len(groups) == 1:
+        await message.answer(
+            f"{get_text('msg_only_one_group', lang)}\n\n{get_text('msg_active_group', lang)}: <b>{groups[0]['name']}</b>"
+        )
+        return
+
+    await message.answer(
+        f"{get_text('msg_select_group', lang)}\n\n{get_text('msg_active_group', lang)}: <b>{active_group.get('name') if active_group else '-'}</b>",
+        reply_markup=get_groups_keyboard(groups, user.active_group_id, lang),
+    )
+
+
+@router.callback_query(F.data == 'settings_group')
+async def callback_group_selection(callback: CallbackQuery):
+    user, groups, active_group = await _settings_payload(callback.from_user)
+    lang = user.language_code
+
+    if not groups:
+        await callback.answer(get_text('msg_no_groups', lang), show_alert=True)
+        return
+
+    if len(groups) == 1:
+        await callback.answer(get_text('msg_only_one_group', lang), show_alert=True)
+        return
+
+    await callback.message.edit_text(
+        f"{get_text('msg_select_group', lang)}\n\n{get_text('msg_active_group', lang)}: <b>{active_group.get('name') if active_group else '-'}</b>",
+        reply_markup=get_groups_keyboard(groups, user.active_group_id, lang),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith('settings_group_'))
+async def callback_set_group(callback: CallbackQuery):
+    user = await _load_user(callback)
+    lang = user.language_code
+
+    try:
+        group_id = int(callback.data.rsplit('_', 1)[1])
+    except (TypeError, ValueError):
+        await callback.answer(_tr(lang, "Noto'g'ri guruh", 'Неверная группа', 'Invalid group'), show_alert=True)
+        return
+
+    try:
+        group = await set_user_active_group(user.id, group_id)
+    except ValueError:
+        await callback.answer(_tr(lang, "Guruhga ruxsat yo'q", 'Нет доступа к группе', 'No access to this group'), show_alert=True)
+        return
+
+    updated_user, groups, _ = await _settings_payload(callback.from_user)
+    user_is_admin = await is_admin(updated_user.id)
+
+    await callback.message.edit_text(
+        f"{get_text('msg_group_changed', lang)}\n\n{get_text('msg_active_group', lang)}: <b>{group.name}</b>",
+        reply_markup=get_settings_keyboard(updated_user.language_code, user_is_admin, can_switch_group=len(groups) > 1),
     )
     await callback.answer()
 

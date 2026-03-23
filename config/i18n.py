@@ -10,6 +10,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
     'btn_balance': {'uz': '💰 Balans', 'ru': '💰 Баланс', 'en': '💰 Balance'},
     'btn_reports': {'uz': '📄 Hisobotlar', 'ru': '📄 Отчёты', 'en': '📄 Reports'},
     'btn_settings': {'uz': '⚙️ Sozlamalar', 'ru': '⚙️ Настройки', 'en': '⚙️ Settings'},
+    'btn_switch_group': {'uz': "🏢 Guruhni almashtirish", 'ru': '🏢 Сменить группу', 'en': '🏢 Switch group'},
     'btn_invite': {'uz': "🔗 Guruhga qo'shish", 'ru': '🔗 Пригласить в группу', 'en': '🔗 Invite to group'},
     'btn_debts': {'uz': '💳 Qarzlar', 'ru': '💳 Долги', 'en': '💳 Debts'},
     'msg_debt_enter_amount': {
@@ -69,6 +70,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
             '/transfer - O\'tkazma\n'
             '/transfers - Yuborilgan\n'
             '/received - Qabul qilingan\n'
+            '/group - Faol guruh\n'
             '/invite - Guruh linki\n'
             '/settings - Sozlamalar\n'
             '/users - Users (admin)\n'
@@ -83,6 +85,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
             '/transfer - Перевод\n'
             '/transfers - Отправленные\n'
             '/received - Полученные\n'
+            '/group - Активная группа\n'
             '/invite - Ссылка группы\n'
             '/settings - Настройки\n'
             '/users - Пользователи (admin)\n'
@@ -97,6 +100,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
             '/transfer - Transfer\n'
             '/transfers - Sent\n'
             '/received - Received\n'
+            '/group - Active group\n'
             '/invite - Group invite link\n'
             '/settings - Settings\n'
             '/users - Users (admin)\n'
@@ -110,6 +114,19 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
     'msg_operation_cancelled': {'uz': 'Operatsiya bekor qilindi.', 'ru': 'Операция отменена.', 'en': 'Operation cancelled.'},
     'msg_main_menu': {'uz': 'Asosiy menyu:', 'ru': 'Главное меню:', 'en': 'Main menu:'},
     'msg_settings': {'uz': '⚙️ Sozlamalar', 'ru': '⚙️ Настройки', 'en': '⚙️ Settings'},
+    'msg_active_group': {'uz': 'Faol guruh', 'ru': 'Активная группа', 'en': 'Active group'},
+    'msg_select_group': {'uz': 'Guruhni tanlang:', 'ru': 'Выберите группу:', 'en': 'Select group:'},
+    'msg_group_changed': {'uz': "Guruh o'zgartirildi ✅", 'ru': 'Группа изменена ✅', 'en': 'Group changed ✅'},
+    'msg_only_one_group': {
+        'uz': 'Sizda faqat bitta guruh bor.',
+        'ru': 'У вас только одна группа.',
+        'en': 'You only have one group.',
+    },
+    'msg_no_groups': {
+        'uz': 'Siz hali hech qaysi guruhga ulanmagansiz.',
+        'ru': 'Вы пока не подключены ни к одной группе.',
+        'en': 'You are not connected to any group yet.',
+    },
     'msg_admin_panel': {'uz': '👨‍💼 Admin panel', 'ru': '👨‍💼 Админ панель', 'en': '👨‍💼 Admin panel'},
     'msg_exchange_rate': {'uz': '💱 Valyuta kursi', 'ru': '💱 Курс валют', 'en': '💱 Exchange rate'},
     'msg_exchange_rate_updated': {'uz': 'Valyuta kursi yangilandi ✅', 'ru': 'Курс валют обновлён ✅', 'en': 'Exchange rate updated ✅'},
