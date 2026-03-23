@@ -11,6 +11,18 @@ import {
 import { localeFromLang, normalizeLang } from '@/i18n'
 
 export const SETTINGS_QUERY_KEY = ['user-settings']
+const GROUP_SCOPED_QUERY_KEYS = [
+  ['balance'],
+  ['transactions'],
+  ['transfers'],
+  ['debts'],
+  ['workers'],
+  ['workers-summary'],
+  ['statistics'],
+  ['group-members'],
+  ['admin-members'],
+  ['admin-workers-summary'],
+]
 
 const applyTheme = (theme?: 'light' | 'dark') => {
   const safeTheme = theme === 'dark' ? 'dark' : 'light'
@@ -41,6 +53,14 @@ export const useAppSettings = () => {
     queryClient.setQueryData<UserSettings>(SETTINGS_QUERY_KEY, next)
   }
 
+  const invalidateGroupScopedData = async () => {
+    await Promise.all(
+      GROUP_SCOPED_QUERY_KEYS.map((queryKey) =>
+        queryClient.invalidateQueries({ queryKey }),
+      ),
+    )
+  }
+
   const languageMutation = useMutation({
     mutationFn: updateLanguage,
     onSuccess: patchSettings,
@@ -48,7 +68,10 @@ export const useAppSettings = () => {
 
   const currencyMutation = useMutation({
     mutationFn: updateCurrency,
-    onSuccess: patchSettings,
+    onSuccess: async (next) => {
+      patchSettings(next)
+      await invalidateGroupScopedData()
+    },
   })
 
   const themeMutation = useMutation({
@@ -58,7 +81,10 @@ export const useAppSettings = () => {
 
   const activeGroupMutation = useMutation({
     mutationFn: updateActiveGroup,
-    onSuccess: patchSettings,
+    onSuccess: async (next) => {
+      patchSettings(next)
+      await invalidateGroupScopedData()
+    },
   })
 
   const isMutating = useMemo(

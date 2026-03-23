@@ -18,6 +18,7 @@ function App() {
   const [isReady, setIsReady] = useState(false)
   const allowDevPreview = import.meta.env.DEV && !webApp
   const { settings, theme, isLoading } = useAppSettings()
+  const canManageAdmin = Boolean(settings?.is_group_admin || settings?.is_admin)
 
   useEffect(() => {
     if (webApp) {
@@ -52,10 +53,10 @@ function App() {
             <Route path="/team" element={<Workers />} />
             <Route path="/statistics" element={<Statistics />} />
             <Route path="/settings" element={<Settings />} />
-            <Route path="/admin" element={<AdminPanel />} />
+            <Route path="/admin" element={canManageAdmin ? <AdminPanel /> : <Navigate to="/settings" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
-          <BottomNav canSeeTeam={Boolean(settings?.is_group_admin || settings?.is_admin)} />
+          <BottomNav canSeeTeam={canManageAdmin} />
         </div>
       </div>
     </BrowserRouter>

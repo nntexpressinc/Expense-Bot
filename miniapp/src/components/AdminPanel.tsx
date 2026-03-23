@@ -1,6 +1,14 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createGroup, createWorker, getGroupMembers, getGroups, getWorkersSummary, renameGroup, upsertGroupMember } from '@/api/endpoints'
+import {
+  createGroup,
+  createWorker,
+  getGroupMembers,
+  getGroups,
+  getWorkersSummary,
+  renameGroup,
+  upsertGroupMember,
+} from '@/api/endpoints'
 import { useAppSettings } from '@/hooks/useAppSettings'
 import { useTelegram } from '@/hooks/useTelegram'
 import { t } from '@/i18n'
@@ -27,22 +35,24 @@ export const AdminPanel = () => {
   const [workerRate, setWorkerRate] = useState('')
 
   const month = useMemo(currentMonthRange, [])
+  const canManageAdmin = Boolean(settings?.is_group_admin || settings?.is_admin)
 
   const groupsQuery = useQuery({
     queryKey: ['admin-groups'],
     queryFn: getGroups,
+    enabled: canManageAdmin,
   })
 
   const membersQuery = useQuery({
     queryKey: ['admin-members', settings?.active_group_id],
     queryFn: () => getGroupMembers(settings?.active_group_id as number),
-    enabled: Boolean(settings?.active_group_id),
+    enabled: Boolean(settings?.active_group_id && canManageAdmin),
   })
 
   const workersSummaryQuery = useQuery({
     queryKey: ['admin-workers-summary', settings?.active_group_id, month.start, month.end],
     queryFn: () => getWorkersSummary({ start_date: month.start, end_date: month.end }),
-    enabled: Boolean(settings?.active_group_id),
+    enabled: Boolean(settings?.active_group_id && canManageAdmin),
   })
 
   const refresh = async () => {
@@ -52,6 +62,7 @@ export const AdminPanel = () => {
       queryClient.invalidateQueries({ queryKey: ['admin-workers-summary'] }),
       queryClient.invalidateQueries({ queryKey: ['user-settings'] }),
       queryClient.invalidateQueries({ queryKey: ['workers'] }),
+      queryClient.invalidateQueries({ queryKey: ['group-members'] }),
     ])
   }
 
@@ -113,7 +124,7 @@ export const AdminPanel = () => {
     onError: handleError,
   })
 
-  if (!settings?.is_group_admin && !settings?.is_admin) {
+  if (!canManageAdmin) {
     return (
       <Page title={t('admin', language)} subtitle={settings?.active_group_name || '-'}>
         <EmptyState title={t('notAllowed', language)} />
@@ -133,7 +144,7 @@ export const AdminPanel = () => {
         <SectionTitle title={t('createNewGroup', language)} />
         <div className="space-y-3">
           <input className="field" placeholder={t('groupName', language)} value={groupName} onChange={(e) => setGroupName(e.target.value)} />
-          <button type="button" className="primary-button w-full" onClick={() => createGroupMutation.mutate(groupName)}>
+          <button type="button" className="primary-button w-full" onClick={() => createGroupMutation.mutate(groupName)} disabled={createGroupMutation.isPending}>
             {t('save', language)}
           </button>
         </div>
@@ -161,6 +172,7 @@ export const AdminPanel = () => {
                   type="button"
                   className="secondary-button w-full"
                   onClick={() => renameGroupMutation.mutate({ groupId: currentGroup.id, name: renameValue || currentGroup.name })}
+                  disabled={renameGroupMutation.isPending}
                 >
                   {t('rename', language)}
                 </button>
@@ -184,6 +196,7 @@ export const AdminPanel = () => {
             type="button"
             className="primary-button w-full"
             onClick={() => settings?.active_group_id && addMemberMutation.mutate({ groupId: settings.active_group_id, userId: Number(memberId), role: memberRole })}
+            disabled={addMemberMutation.isPending}
           >
             {t('addMember', language)}
           </button>
@@ -193,8 +206,12 @@ export const AdminPanel = () => {
                 <div key={member.user_id} className="surface-card-muted px-4 py-3">
                   <div className="flex items-center justify-between gap-4">
                     <div>
-                      <p className="text-sm font-semibold text-[var(--text)]">{member.first_name} {member.last_name || ''}</p>
-                      <p className="mt-1 text-xs text-[var(--text-soft)]">@{member.username || 'no_username'} · {member.role}</p>
+                      <p className="text-sm font-semibold text-[var(--text)]">
+                        {member.first_name} {member.last_name || ''}
+                      </p>
+                      <p className="mt-1 text-xs text-[var(--text-soft)]">
+                        @{member.username || 'no_username'} - {member.role}
+                      </p>
                     </div>
                     <span className="text-xs text-[var(--text-muted)]">ID {member.user_id}</span>
                   </div>
@@ -208,7 +225,7 @@ export const AdminPanel = () => {
       </Card>
 
       <Card>
-        <SectionTitle title={t('workers', language)} hint={`${month.start} → ${month.end}`} />
+        <SectionTitle title={t('workers', language)} hint={`${month.start} -> ${month.end}`} />
         <div className="space-y-3">
           <input className="field" placeholder={t('fullName', language)} value={workerName} onChange={(e) => setWorkerName(e.target.value)} />
           <input className="field" inputMode="decimal" placeholder={t('amount', language)} value={workerRate} onChange={(e) => setWorkerRate(e.target.value)} />
@@ -216,6 +233,7 @@ export const AdminPanel = () => {
             type="button"
             className="primary-button w-full"
             onClick={() => createWorkerMutation.mutate({ full_name: workerName, rate: Number(workerRate) })}
+            disabled={createWorkerMutation.isPending}
           >
             {t('addWorker', language)}
           </button>

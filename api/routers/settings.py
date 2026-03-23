@@ -3,7 +3,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import select, update
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routers.auth import get_current_user
@@ -91,6 +91,27 @@ class UpdateExchangeRateRequest(BaseModel):
     rate: Decimal = Field(..., gt=0, description="Exchange rate must be positive")
 
 
+async def build_user_settings_response(db: AsyncSession, current_user: User) -> dict:
+    global_admin = await check_user_admin_status(current_user)
+    active_group = await get_active_group(db, current_user)
+    groups = await list_user_groups(db, current_user.id)
+
+    return {
+        "id": current_user.id,
+        "username": current_user.username,
+        "first_name": current_user.first_name,
+        "last_name": current_user.last_name,
+        "language_code": normalize_lang(current_user.language_code),
+        "default_currency": normalize_currency(current_user.default_currency, "UZS"),
+        "theme_preference": normalize_theme(current_user.theme_preference),
+        "active_group_id": active_group.id if active_group else None,
+        "active_group_name": active_group.name if active_group else None,
+        "groups": groups,
+        "is_admin": global_admin,
+        "is_group_admin": await is_group_admin(db, current_user, active_group.id if active_group else None),
+    }
+
+
 @router.get("/categories", response_model=list[CategoryResponse])
 async def get_categories(
     type: Optional[str] = Query(None, pattern="^(income|expense)$"),
@@ -141,63 +162,49 @@ async def get_user_settings(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    global_admin = await check_user_admin_status(current_user)
-    active_group = await get_active_group(db, current_user)
-    groups = await list_user_groups(db, current_user.id)
-
-    return {
-        "id": current_user.id,
-        "username": current_user.username,
-        "first_name": current_user.first_name,
-        "last_name": current_user.last_name,
-        "language_code": normalize_lang(current_user.language_code),
-        "default_currency": normalize_currency(current_user.default_currency, "UZS"),
-        "theme_preference": normalize_theme(current_user.theme_preference),
-        "active_group_id": active_group.id if active_group else None,
-        "active_group_name": active_group.name if active_group else None,
-        "groups": groups,
-        "is_admin": global_admin,
-        "is_group_admin": await is_group_admin(db, current_user, active_group.id if active_group else None),
-    }
+    return await build_user_settings_response(db, current_user)
 
 
-@router.patch("/user/currency")
+@router.patch("/user/currency", response_model=UserSettingsResponse)
 async def update_user_currency(
     request: UpdateCurrencyRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     currency = normalize_currency(request.currency, "UZS")
-    await db.execute(update(User).where(User.id == current_user.id).values(default_currency=currency))
+    current_user.default_currency = currency
     await db.commit()
-    return {"success": True, "currency": currency}
+    await db.refresh(current_user)
+    return await build_user_settings_response(db, current_user)
 
 
-@router.patch("/user/language")
+@router.patch("/user/language", response_model=UserSettingsResponse)
 async def update_user_language(
     request: UpdateLanguageRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     language = normalize_lang(request.language)
-    await db.execute(update(User).where(User.id == current_user.id).values(language_code=language))
+    current_user.language_code = language
     await db.commit()
-    return {"success": True, "language": language}
+    await db.refresh(current_user)
+    return await build_user_settings_response(db, current_user)
 
 
-@router.patch("/user/theme")
+@router.patch("/user/theme", response_model=UserSettingsResponse)
 async def update_user_theme(
     request: UpdateThemeRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     theme = normalize_theme(request.theme)
-    await db.execute(update(User).where(User.id == current_user.id).values(theme_preference=theme))
+    current_user.theme_preference = theme
     await db.commit()
-    return {"success": True, "theme": theme}
+    await db.refresh(current_user)
+    return await build_user_settings_response(db, current_user)
 
 
-@router.patch("/user/active-group")
+@router.patch("/user/active-group", response_model=UserSettingsResponse)
 async def update_active_group(
     request: UpdateActiveGroupRequest,
     current_user: User = Depends(get_current_user),
@@ -211,7 +218,8 @@ async def update_active_group(
         raise HTTPException(status_code=404, detail=str(exc))
 
     await db.commit()
-    return {"success": True, "group_id": group.id, "group_name": group.name}
+    await db.refresh(current_user)
+    return await build_user_settings_response(db, current_user)
 
 
 @router.get("/exchange-rates", response_model=List[ExchangeRateResponse])

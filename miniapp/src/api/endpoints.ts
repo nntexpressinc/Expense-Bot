@@ -211,12 +211,12 @@ export interface GroupMember {
 }
 
 export const getUserSettings = () => apiClient.get<UserSettings>('/settings/user').then((res) => res.data)
-export const updateLanguage = (language_code: string) =>
-  apiClient.patch<UserSettings>('/settings/user/language', { language_code }).then((res) => res.data)
-export const updateCurrency = (default_currency: 'UZS' | 'USD') =>
-  apiClient.patch<UserSettings>('/settings/user/currency', { default_currency }).then((res) => res.data)
-export const updateTheme = (theme_preference: 'light' | 'dark') =>
-  apiClient.patch<UserSettings>('/settings/user/theme', { theme_preference }).then((res) => res.data)
+export const updateLanguage = (language: string) =>
+  apiClient.patch<UserSettings>('/settings/user/language', { language }).then((res) => res.data)
+export const updateCurrency = (currency: 'UZS' | 'USD') =>
+  apiClient.patch<UserSettings>('/settings/user/currency', { currency }).then((res) => res.data)
+export const updateTheme = (theme: 'light' | 'dark') =>
+  apiClient.patch<UserSettings>('/settings/user/theme', { theme }).then((res) => res.data)
 export const updateActiveGroup = (group_id: number) =>
   apiClient.patch<UserSettings>('/settings/user/active-group', { group_id }).then((res) => res.data)
 

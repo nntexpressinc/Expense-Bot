@@ -1,7 +1,13 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createGroup, getGroupMembers, removeGroupMember, renameGroup, upsertGroupMember } from '@/api/endpoints'
+import {
+  createGroup,
+  getGroupMembers,
+  removeGroupMember,
+  renameGroup,
+  upsertGroupMember,
+} from '@/api/endpoints'
 import { useAppSettings } from '@/hooks/useAppSettings'
 import { useTelegram } from '@/hooks/useTelegram'
 import { t } from '@/i18n'
@@ -10,36 +16,58 @@ import { EmptyState } from '@/components/shared/States'
 
 export default function Settings() {
   const queryClient = useQueryClient()
-  const { settings, language, setLanguage, setCurrency, setTheme, setActiveGroup, refreshSettings, isMutating } = useAppSettings()
+  const {
+    settings,
+    language,
+    setLanguage,
+    setCurrency,
+    setTheme,
+    setActiveGroup,
+    refreshSettings,
+    isMutating,
+  } = useAppSettings()
   const { showAlert, haptic } = useTelegram()
   const [newGroupName, setNewGroupName] = useState('')
   const [renameValue, setRenameValue] = useState('')
   const [memberUserId, setMemberUserId] = useState('')
   const [memberRole, setMemberRole] = useState<'admin' | 'member'>('member')
 
+  const canManageAdmin = Boolean(settings?.is_group_admin || settings?.is_admin)
   const activeGroupId = settings?.active_group_id || undefined
 
   const membersQuery = useQuery({
     queryKey: ['group-members', activeGroupId],
     queryFn: () => getGroupMembers(activeGroupId as number),
-    enabled: Boolean(activeGroupId && (settings?.is_group_admin || settings?.is_admin)),
+    enabled: Boolean(activeGroupId && canManageAdmin),
   })
 
   const refreshEverything = async () => {
     await Promise.all([
       refreshSettings(),
       queryClient.invalidateQueries({ queryKey: ['group-members'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-members'] }),
+      queryClient.invalidateQueries({ queryKey: ['admin-groups'] }),
       queryClient.invalidateQueries({ queryKey: ['balance'] }),
       queryClient.invalidateQueries({ queryKey: ['workers'] }),
       queryClient.invalidateQueries({ queryKey: ['transactions'] }),
       queryClient.invalidateQueries({ queryKey: ['transfers'] }),
       queryClient.invalidateQueries({ queryKey: ['debts'] }),
+      queryClient.invalidateQueries({ queryKey: ['statistics'] }),
     ])
   }
 
   const handleError = async (error: any) => {
     haptic.error()
     await showAlert(error?.response?.data?.detail || error?.message || t('requestFailed', language))
+  }
+
+  const applySettingChange = async (action: () => Promise<unknown>) => {
+    try {
+      await action()
+      haptic.success()
+    } catch (error) {
+      await handleError(error)
+    }
   }
 
   const createGroupMutation = useMutation({
@@ -97,6 +125,15 @@ export default function Settings() {
 
   return (
     <Page title={t('settings', language)} subtitle={settings.active_group_name || '-'}>
+      {canManageAdmin ? (
+        <Card>
+          <SectionTitle title={t('admin', language)} hint={settings.is_admin ? t('superAdmin', language) : t('groupAdmin', language)} />
+          <Link to="/admin" className="primary-button block w-full text-center">
+            {t('admin', language)}
+          </Link>
+        </Card>
+      ) : null}
+
       <Card>
         <SectionTitle title={t('language', language)} />
         <div className="grid grid-cols-3 gap-2">
@@ -104,7 +141,7 @@ export default function Settings() {
             <button
               key={langItem}
               type="button"
-              onClick={() => setLanguage(langItem)}
+              onClick={() => applySettingChange(() => setLanguage(langItem))}
               className={`pill-button ${settings.language_code === langItem ? 'active' : ''}`}
               disabled={isMutating}
             >
@@ -121,7 +158,7 @@ export default function Settings() {
             <button
               key={currency}
               type="button"
-              onClick={() => setCurrency(currency)}
+              onClick={() => applySettingChange(() => setCurrency(currency))}
               className={`pill-button ${settings.default_currency === currency ? 'active' : ''}`}
               disabled={isMutating}
             >
@@ -134,10 +171,20 @@ export default function Settings() {
       <Card>
         <SectionTitle title={t('theme', language)} />
         <div className="grid grid-cols-2 gap-2">
-          <button type="button" className={`pill-button ${settings.theme_preference === 'light' ? 'active' : ''}`} onClick={() => setTheme('light')}>
+          <button
+            type="button"
+            className={`pill-button ${settings.theme_preference === 'light' ? 'active' : ''}`}
+            onClick={() => applySettingChange(() => setTheme('light'))}
+            disabled={isMutating}
+          >
             {t('lightTheme', language)}
           </button>
-          <button type="button" className={`pill-button ${settings.theme_preference === 'dark' ? 'active' : ''}`} onClick={() => setTheme('dark')}>
+          <button
+            type="button"
+            className={`pill-button ${settings.theme_preference === 'dark' ? 'active' : ''}`}
+            onClick={() => applySettingChange(() => setTheme('dark'))}
+            disabled={isMutating}
+          >
             {t('darkTheme', language)}
           </button>
         </div>
@@ -150,11 +197,12 @@ export default function Settings() {
             <select
               className="field"
               value={settings.active_group_id || ''}
-              onChange={(e) => setActiveGroup(Number(e.target.value))}
+              onChange={(e) => applySettingChange(() => setActiveGroup(Number(e.target.value)))}
+              disabled={isMutating}
             >
               {settings.groups.map((group) => (
                 <option key={group.id} value={group.id}>
-                  {group.name} · {group.role}
+                  {group.name} - {group.role}
                 </option>
               ))}
             </select>
@@ -167,13 +215,23 @@ export default function Settings() {
         )}
       </Card>
 
-      {settings.is_group_admin || settings.is_admin ? (
+      {canManageAdmin ? (
         <>
           <Card>
             <SectionTitle title={t('createNewGroup', language)} />
             <div className="space-y-3">
-              <input className="field" placeholder={t('groupName', language)} value={newGroupName} onChange={(e) => setNewGroupName(e.target.value)} />
-              <button type="button" className="primary-button w-full" onClick={() => createGroupMutation.mutate(newGroupName)}>
+              <input
+                className="field"
+                placeholder={t('groupName', language)}
+                value={newGroupName}
+                onChange={(e) => setNewGroupName(e.target.value)}
+              />
+              <button
+                type="button"
+                className="primary-button w-full"
+                onClick={() => createGroupMutation.mutate(newGroupName)}
+                disabled={createGroupMutation.isPending}
+              >
                 {t('save', language)}
               </button>
             </div>
@@ -183,15 +241,26 @@ export default function Settings() {
             <Card>
               <SectionTitle title={currentGroup.name} hint={currentGroup.role} />
               <div className="space-y-3">
-                <input className="field" placeholder={t('rename', language)} value={renameValue} onChange={(e) => setRenameValue(e.target.value)} />
+                <input
+                  className="field"
+                  placeholder={t('rename', language)}
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                />
                 <button
                   type="button"
                   className="secondary-button w-full"
                   onClick={() => renameGroupMutation.mutate({ groupId: currentGroup.id, name: renameValue || currentGroup.name })}
+                  disabled={renameGroupMutation.isPending}
                 >
                   {t('rename', language)}
                 </button>
-                <input className="field" placeholder={t('userId', language)} value={memberUserId} onChange={(e) => setMemberUserId(e.target.value)} />
+                <input
+                  className="field"
+                  placeholder={t('userId', language)}
+                  value={memberUserId}
+                  onChange={(e) => setMemberUserId(e.target.value)}
+                />
                 <select className="field" value={memberRole} onChange={(e) => setMemberRole(e.target.value as 'admin' | 'member')}>
                   <option value="member">{t('member', language)}</option>
                   <option value="admin">{t('groupAdmin', language)}</option>
@@ -200,6 +269,7 @@ export default function Settings() {
                   type="button"
                   className="primary-button w-full"
                   onClick={() => memberMutation.mutate({ groupId: currentGroup.id, userId: Number(memberUserId), role: memberRole })}
+                  disabled={memberMutation.isPending}
                 >
                   {t('addMember', language)}
                 </button>
@@ -218,15 +288,16 @@ export default function Settings() {
                         {member.first_name} {member.last_name || ''}
                       </p>
                       <p className="mt-1 text-xs text-[var(--text-soft)]">
-                        @{member.username || 'no_username'} · {member.role}
+                        @{member.username || 'no_username'} - {member.role}
                       </p>
                     </div>
                     <button
                       type="button"
                       className="text-xs text-[var(--danger)]"
                       onClick={() => currentGroup && removeMemberMutation.mutate({ groupId: currentGroup.id, userId: member.user_id })}
+                      disabled={removeMemberMutation.isPending}
                     >
-                      Remove
+                      {t('remove', language)}
                     </button>
                   </div>
                 ))}
@@ -234,13 +305,6 @@ export default function Settings() {
             ) : (
               <EmptyState title={t('members', language)} hint={t('noGroups', language)} />
             )}
-          </Card>
-
-          <Card>
-            <SectionTitle title={t('admin', language)} />
-            <Link to="/admin" className="primary-button block w-full text-center">
-              {t('admin', language)}
-            </Link>
           </Card>
         </>
       ) : null}
