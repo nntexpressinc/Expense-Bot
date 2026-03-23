@@ -47,6 +47,17 @@ def normalize_debt_kind(kind: str | None) -> str:
     return value if value in {"cash_loan", "credit_purchase"} else "credit_purchase"
 
 
+def calculate_available_debt_source_native(debt: Debt) -> Decimal:
+    if debt.status not in {"active", "partially_repaid"}:
+        return Decimal("0.00")
+    if normalize_debt_kind(getattr(debt, "kind", None)) != "cash_loan":
+        return Decimal("0.00")
+
+    unused_principal = max(Decimal("0"), _to_decimal(debt.amount) - _to_decimal(debt.used_amount))
+    remaining_principal = max(Decimal("0"), _to_decimal(debt.remaining_amount))
+    return min(unused_principal, remaining_principal).quantize(MONEY_QUANT, rounding=ROUND_HALF_UP)
+
+
 def _fx_cache(db: AsyncSession) -> dict[tuple[str, str], Decimal]:
     cache = db.info.get("_fx_cache")
     if cache is None:
@@ -192,17 +203,7 @@ async def get_user_main_balance_summary(
             )
         )
     ).all()
-    debt_cash_rows = (
-        await db.execute(
-            select(Transaction.amount, Transaction.currency).where(
-                Transaction.user_id == user.id,
-                Transaction.group_id == resolved_group_id,
-                Transaction.type == TransactionType.DEBT,
-                Transaction.debt_kind == "cash_loan",
-            )
-        )
-    ).all()
-    own_income = await _sum_converted(db, [*income_rows, *debt_cash_rows], currency)
+    own_income = await _sum_converted(db, income_rows, currency)
 
     own_expense_rows = (
         await db.execute(
@@ -266,8 +267,8 @@ async def get_user_debt_summary(
     available_debt = Decimal("0")
     outstanding_debt = Decimal("0")
     for debt in debts:
-        if debt.status in {"active", "partially_repaid"} and normalize_debt_kind(getattr(debt, "kind", None)) == "credit_purchase":
-            available_native = max(Decimal("0"), _to_decimal(debt.amount) - _to_decimal(debt.used_amount))
+        available_native = calculate_available_debt_source_native(debt)
+        if available_native > 0:
             available_debt += await convert_amount(db, available_native, debt.currency, currency)
         outstanding_debt += await convert_amount(db, debt.remaining_amount, debt.currency, currency)
 
@@ -379,11 +380,9 @@ async def get_available_debt_for_entry(
     target_currency: str | None = None,
 ) -> Decimal:
     currency = normalize_currency(target_currency or debt.currency, "UZS")
-    if debt.status not in {"active", "partially_repaid"}:
+    available_native = calculate_available_debt_source_native(debt)
+    if available_native <= 0:
         return Decimal("0.00")
-    if normalize_debt_kind(getattr(debt, "kind", None)) != "credit_purchase":
-        return Decimal("0.00")
-    available_native = max(Decimal("0"), _to_decimal(debt.amount) - _to_decimal(debt.used_amount))
     return await convert_amount(db, available_native, debt.currency, currency)
 
 
@@ -396,11 +395,11 @@ async def apply_debt_usage(
     currency: str,
     note: str | None = None,
 ) -> DebtUsage:
-    if normalize_debt_kind(getattr(debt, "kind", None)) != "credit_purchase":
-        raise ValueError("Only buy-on-credit debt can be used as an expense source")
+    if normalize_debt_kind(getattr(debt, "kind", None)) != "cash_loan":
+        raise ValueError("Only borrowed cash debt can be used as an expense source")
 
     native_amount = await convert_amount(db, amount, currency, debt.currency)
-    available_native = max(Decimal("0"), _to_decimal(debt.amount) - _to_decimal(debt.used_amount))
+    available_native = calculate_available_debt_source_native(debt)
     if native_amount > available_native:
         raise ValueError("Selected debt source does not have enough available balance")
 

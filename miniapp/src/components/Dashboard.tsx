@@ -21,7 +21,7 @@ const transactionPrefix = (transaction: { type: string; debt_kind?: 'cash_loan' 
     return '-'
   }
   if (transaction.type === 'debt') {
-    return transaction.debt_kind === 'cash_loan' ? '+' : ''
+    return transaction.debt_kind === 'cash_loan' ? '+' : '-'
   }
   return '+'
 }
@@ -147,7 +147,16 @@ export default function Dashboard() {
                     </p>
                     {transaction.funding_source ? (
                       <p className="mt-1 text-xs text-[var(--text-muted)]">
-                        {transaction.funding_source === 'debt' ? t('debtSource', language) : t('mainSource', language)}
+                        {transaction.funding_source === 'debt' && transaction.main_used_amount
+                          ? t('mainAndDebtSource', language)
+                          : transaction.funding_source === 'debt'
+                            ? t('debtSource', language)
+                            : t('mainSource', language)}
+                      </p>
+                    ) : null}
+                    {transaction.debt_source_name ? (
+                      <p className="mt-1 text-xs text-[var(--text-muted)]">
+                        {t('sourceName', language)}: {transaction.debt_source_name}
                       </p>
                     ) : null}
                   </div>

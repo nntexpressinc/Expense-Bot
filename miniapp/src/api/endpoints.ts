@@ -48,6 +48,9 @@ export interface Transaction {
   currency: string
   funding_source?: 'main' | 'debt'
   debt_kind?: 'cash_loan' | 'credit_purchase' | null
+  debt_source_name?: string | null
+  debt_used_amount?: number | null
+  main_used_amount?: number | null
   category?: {
     id: number
     name: string

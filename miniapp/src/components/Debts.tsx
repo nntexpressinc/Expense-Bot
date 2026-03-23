@@ -138,8 +138,8 @@ export default function Debts() {
           {debt.note ? <p className="mt-1 text-sm text-[var(--text-soft)]">{debt.note}</p> : null}
           <p className="mt-2 text-xs text-[var(--text-muted)]">
             {debt.kind === 'cash_loan'
-              ? t('cashLoanHint', language)
-              : `${t('availableToSpend', language)}: ${formatMoney(debt.available_to_spend || 0, debt.currency, locale)}`}
+              ? `${t('availableToSpend', language)}: ${formatMoney(debt.available_to_spend || 0, debt.currency, locale)}`
+              : t('creditPurchaseHint', language)}
           </p>
         </div>
         <div className="text-right">

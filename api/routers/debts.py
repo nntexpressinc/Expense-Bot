@@ -117,7 +117,7 @@ async def _serialize_debt(
         "remaining": float(remaining_display),
         "used_amount": float(used_display),
         "available_to_spend": float(available_to_spend),
-        "affects_main_balance": debt_kind == "cash_loan",
+        "affects_main_balance": False,
         "currency": target_currency,
         "status": debt.status,
         "description": debt.description,
@@ -181,7 +181,7 @@ async def create_debt_endpoint(
             type=TransactionType.DEBT,
             amount=payload.amount,
             currency=currency,
-            description=payload.description or payload.source_name or ("Cash loan received" if debt_kind == "cash_loan" else "Buy on credit"),
+            description=payload.description or payload.source_name or ("Borrowed money" if debt_kind == "cash_loan" else "Buy on credit"),
             funding_source="main",
             debt_kind=debt_kind,
         )

@@ -1,6 +1,6 @@
 import { FormEvent, useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { createTransaction, deleteTransaction, getCategories, getTransactions, listDebts } from '@/api/endpoints'
+import { createTransaction, deleteTransaction, getBalance, getCategories, getTransactions, listDebts } from '@/api/endpoints'
 import { useAppSettings } from '@/hooks/useAppSettings'
 import { useTelegram } from '@/hooks/useTelegram'
 import { t } from '@/i18n'
@@ -35,7 +35,7 @@ const transactionPrefix = (transaction: { type: string; debt_kind?: 'cash_loan' 
     return '-'
   }
   if (transaction.type === 'debt') {
-    return transaction.debt_kind === 'cash_loan' ? '+' : ''
+    return transaction.debt_kind === 'cash_loan' ? '+' : '-'
   }
   return '+'
 }
@@ -59,6 +59,10 @@ export default function Transactions() {
   const categoriesQuery = useQuery({
     queryKey: ['categories', type],
     queryFn: () => getCategories(type),
+  })
+  const balanceQuery = useQuery({
+    queryKey: ['balance'],
+    queryFn: getBalance,
   })
   const debtsQuery = useQuery({
     queryKey: ['debts-for-expense'],
@@ -104,12 +108,16 @@ export default function Transactions() {
     () =>
       (debtsQuery.data || []).filter(
         (debt) =>
-          debt.kind === 'credit_purchase' &&
+          debt.kind === 'cash_loan' &&
           (debt.available_to_spend || 0) > 0 &&
           (debt.status === 'active' || debt.status === 'partially_repaid' || !debt.status),
       ),
     [debtsQuery.data],
   )
+
+  const numericAmount = Number(amount || 0)
+  const mainBalance = balanceQuery.data?.total_balance || 0
+  const needsDebtFallback = type === 'expense' && numericAmount > mainBalance
 
   const submit = async (event: FormEvent) => {
     event.preventDefault()
@@ -118,14 +126,18 @@ export default function Transactions() {
       await showAlert(t('requestFailed', language))
       return
     }
+    if (type === 'expense' && needsDebtFallback && !debtId) {
+      await showAlert(openDebts.length ? t('selectDebt', language) : t('createDebtFirst', language))
+      return
+    }
     await createMutation.mutateAsync({
       type,
       amount: numericAmount,
       currency: settings?.default_currency || 'UZS',
       category_id: categoryId || undefined,
       description: description.trim() || undefined,
-      funding_source: type === 'expense' ? fundingSource : undefined,
-      debt_id: type === 'expense' && fundingSource === 'debt' ? debtId || undefined : undefined,
+      funding_source: type === 'expense' ? (needsDebtFallback ? 'debt' : fundingSource) : undefined,
+      debt_id: type === 'expense' && (needsDebtFallback || fundingSource === 'debt') ? debtId || undefined : undefined,
     })
   }
 
@@ -159,14 +171,19 @@ export default function Transactions() {
           {type === 'expense' ? (
             <>
               <div className="grid grid-cols-2 gap-2">
-                <button type="button" className={`pill-button ${fundingSource === 'main' ? 'active' : ''}`} onClick={() => setFundingSource('main')}>
+                <button type="button" className={`pill-button ${!needsDebtFallback && fundingSource === 'main' ? 'active' : ''}`} onClick={() => setFundingSource('main')}>
                   {t('mainSource', language)}
                 </button>
-                <button type="button" className={`pill-button ${fundingSource === 'debt' ? 'active' : ''}`} onClick={() => setFundingSource('debt')}>
+                <button type="button" className={`pill-button ${(needsDebtFallback || fundingSource === 'debt') ? 'active' : ''}`} onClick={() => setFundingSource('debt')}>
                   {t('debtSource', language)}
                 </button>
               </div>
-              {fundingSource === 'debt' ? (
+              {needsDebtFallback ? (
+                <div className="rounded-2xl border border-[var(--border)] px-4 py-3 text-sm text-[var(--text-soft)]">
+                  {t('debtFallbackHint', language)}
+                </div>
+              ) : null}
+              {needsDebtFallback || fundingSource === 'debt' ? (
                 <>
                   {openDebts.length ? (
                     <select className="field" value={debtId} onChange={(e) => setDebtId(e.target.value)}>
@@ -179,7 +196,7 @@ export default function Transactions() {
                     </select>
                   ) : (
                     <div className="rounded-2xl border border-[var(--border)] px-4 py-3 text-sm text-[var(--text-soft)]">
-                      {t('noDebtSources', language)}
+                      {t('noDebtSources', language)}. {t('createDebtFirst', language)}.
                     </div>
                   )}
                 </>
@@ -209,12 +226,23 @@ export default function Transactions() {
                     <p className="text-sm font-semibold text-[var(--text)]">{transactionTitle(transaction, language)}</p>
                     <p className="mt-1 text-xs text-[var(--text-soft)]">{formatDateTime(transaction.transaction_date, language)}</p>
                     {transaction.description ? <p className="mt-2 text-sm text-[var(--text-soft)]">{transaction.description}</p> : null}
-                    {transaction.type === 'debt' && transaction.debt_kind === 'credit_purchase' ? (
-                      <p className="mt-1 text-xs text-[var(--text-muted)]">{t('debtRepaymentOnly', language)}</p>
+                    {transaction.type === 'debt' ? (
+                      <p className="mt-1 text-xs text-[var(--text-muted)]">
+                        {transaction.debt_kind === 'cash_loan' ? t('cashLoanHint', language) : t('creditPurchaseHint', language)}
+                      </p>
                     ) : null}
                     {transaction.funding_source ? (
                       <p className="mt-1 text-xs text-[var(--text-muted)]">
-                        {transaction.funding_source === 'debt' ? t('debtSource', language) : t('mainSource', language)}
+                        {transaction.funding_source === 'debt' && transaction.main_used_amount
+                          ? t('mainAndDebtSource', language)
+                          : transaction.funding_source === 'debt'
+                            ? t('debtSource', language)
+                            : t('mainSource', language)}
+                      </p>
+                    ) : null}
+                    {transaction.debt_source_name ? (
+                      <p className="mt-1 text-xs text-[var(--text-muted)]">
+                        {t('sourceName', language)}: {transaction.debt_source_name}
                       </p>
                     ) : null}
                   </div>

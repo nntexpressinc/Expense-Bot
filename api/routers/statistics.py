@@ -41,9 +41,17 @@ TYPE_LABELS = {
     'expense': {'uz': 'Chiqim', 'ru': 'Расход', 'en': 'Expense'},
     'transfer_in': {'uz': 'Kirim (transfer)', 'ru': 'Доход (перевод)', 'en': 'Income (transfer)'},
     'transfer_out': {'uz': 'Chiqim (transfer)', 'ru': 'Расход (перевод)', 'en': 'Expense (transfer)'},
-    'debt': {'uz': 'Qarz olindi', 'ru': 'Долг взят', 'en': 'Debt taken'},
+    'debt_cash_loan': {'uz': 'Qarz olindi', 'ru': 'Деньги взяты в долг', 'en': 'Money borrowed'},
+    'debt_credit_purchase': {'uz': 'Qarzga xarid', 'ru': 'Покупка в долг', 'en': 'Buy on credit'},
     'debt_payment': {'uz': 'Qarz to\'landi', 'ru': 'Погашение долга', 'en': 'Debt payment'},
 }
+
+
+def _type_label(lang: str, tx_type_value: str, debt_kind: str | None = None) -> str:
+    if tx_type_value == TransactionType.DEBT.value:
+        key = 'debt_cash_loan' if debt_kind == 'cash_loan' else 'debt_credit_purchase'
+        return TYPE_LABELS[key].get(lang, TYPE_LABELS[key]['en'])
+    return TYPE_LABELS.get(tx_type_value, {}).get(lang, tx_type_value)
 
 
 def _period_start(period: str) -> tuple[datetime, str]:
@@ -310,12 +318,13 @@ async def export_statistics_excel(
 
     tx_rows = (
         await db.execute(
-            select(
-                Transaction.transaction_date,
-                Transaction.type,
-                Transaction.amount,
-                Transaction.currency,
-                Transaction.category_id,
+                select(
+                    Transaction.transaction_date,
+                    Transaction.type,
+                    Transaction.debt_kind,
+                    Transaction.amount,
+                    Transaction.currency,
+                    Transaction.category_id,
                 Transaction.description,
             )
             .where(
@@ -337,7 +346,11 @@ async def export_statistics_excel(
         )
     ).scalars().all()
 
-    category_ids = [category_id for _, _, _, _, category_id, _ in tx_rows if category_id]
+    category_ids = []
+    for row in tx_rows:
+        category_id = row[5] if len(row) >= 7 else row[4]
+        if category_id:
+            category_ids.append(category_id)
     category_map: dict[int, Category] = {}
     if category_ids:
         categories = (
@@ -349,12 +362,19 @@ async def export_statistics_excel(
     total_expense = Decimal('0')
     report_rows: list[dict] = []
 
-    for tx_date, tx_type, amount, tx_currency, category_id, description in tx_rows:
+    for row in tx_rows:
+        if len(row) >= 7:
+            tx_date, tx_type, debt_kind, amount, tx_currency, category_id, description = row
+        else:
+            tx_date, tx_type, amount, tx_currency, category_id, description = row
+            debt_kind = None
         tx_type_value = tx_type.value if hasattr(tx_type, 'value') else str(tx_type)
         converted = await convert_amount(db, amount, tx_currency, currency)
 
         if tx_type_value in {TransactionType.INCOME.value, TransactionType.TRANSFER_IN.value}:
             total_income += converted
+        elif tx_type_value == TransactionType.DEBT.value and debt_kind == 'credit_purchase':
+            total_expense += converted
         elif tx_type_value in {
             TransactionType.EXPENSE.value,
             TransactionType.TRANSFER_OUT.value,
@@ -364,7 +384,7 @@ async def export_statistics_excel(
 
         category = category_map.get(category_id) if category_id else None
         category_title = f"{category.icon} {category.name}" if category else '-'
-        type_label = TYPE_LABELS.get(tx_type_value, {}).get(lang, tx_type_value)
+        type_label = _type_label(lang, tx_type_value, debt_kind)
 
         report_rows.append(
             {
@@ -426,7 +446,7 @@ async def get_statistics(
 
     rows = (
         await db.execute(
-            select(Transaction.type, Transaction.amount, Transaction.currency, Transaction.category_id)
+            select(Transaction.type, Transaction.debt_kind, Transaction.amount, Transaction.currency, Transaction.category_id)
             .where(
                 and_(
                     Transaction.user_id == current_user.id,
@@ -441,12 +461,19 @@ async def get_statistics(
     total_expense = Decimal('0')
     category_totals: dict[int, Decimal] = {}
 
-    for tx_type, amount, tx_currency, category_id in rows:
+    for row in rows:
+        if len(row) >= 5:
+            tx_type, debt_kind, amount, tx_currency, category_id = row
+        else:
+            tx_type, amount, tx_currency, category_id = row
+            debt_kind = None
         tx_type_val = tx_type.value if hasattr(tx_type, 'value') else str(tx_type)
         converted = await convert_amount(db, amount, tx_currency, currency)
 
         if tx_type_val == TransactionType.INCOME.value:
             total_income += converted
+        elif tx_type_val == TransactionType.DEBT.value and debt_kind == 'credit_purchase':
+            total_expense += converted
         elif tx_type_val in {
             TransactionType.EXPENSE.value,
             TransactionType.TRANSFER_OUT.value,

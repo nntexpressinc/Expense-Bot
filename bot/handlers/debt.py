@@ -30,7 +30,7 @@ def _normalize_lang(value: str | None) -> str:
 
 def _debt_kind_label(kind: str | None, lang: str) -> str:
     labels = {
-        'cash_loan': {'uz': "Naqd qarz", 'ru': 'Деньги в долг', 'en': 'Cash loan'},
+        'cash_loan': {'uz': 'Qarz olish', 'ru': 'Взять в долг', 'en': 'Borrow money'},
         'credit_purchase': {'uz': 'Qarzga xarid', 'ru': 'Покупка в долг', 'en': 'Buy on credit'},
     }
     return labels.get(kind or 'credit_purchase', labels['credit_purchase']).get(lang, labels['credit_purchase']['en'])
@@ -53,11 +53,12 @@ def _render_debts(debts: list[dict], lang: str) -> str:
 
     lines: list[str] = []
     for debt in debts:
-        status = '✅' if debt['remaining'] <= 0 else '⏳'
-        created = debt.get('created_at', '')[:16].replace('T', ' ')
+        status_icon = '✅' if debt['remaining'] <= 0 else '⏳'
         kind_label = _debt_kind_label(debt.get('kind'), lang)
         title = debt.get('description') or debt.get('source_name') or kind_label
-        lines.append(f"{status} <b>{title}</b>")
+        created = (debt.get('created_at') or '')[:16].replace('T', ' ')
+
+        lines.append(f"{status_icon} <b>{title}</b>")
         lines.append(f"{kind_label} • {created}")
         lines.append(
             {
@@ -66,20 +67,28 @@ def _render_debts(debts: list[dict], lang: str) -> str:
                 'en': f"Remaining: {debt['remaining']:.2f} {debt['currency']} / {debt['amount']:.2f}",
             }[lang]
         )
-        if debt.get('kind') == 'credit_purchase':
+        if debt.get('kind') == 'cash_loan':
             lines.append(
                 {
-                    'uz': f"Ishlatish mumkin: {debt.get('available_to_spend', 0):.2f} {debt['currency']}",
-                    'ru': f"Доступно для расхода: {debt.get('available_to_spend', 0):.2f} {debt['currency']}",
-                    'en': f"Available to spend: {debt.get('available_to_spend', 0):.2f} {debt['currency']}",
+                    'uz': f"Qarz balansi: {debt.get('available_to_spend', 0):.2f} {debt['currency']}",
+                    'ru': f"Долговой баланс: {debt.get('available_to_spend', 0):.2f} {debt['currency']}",
+                    'en': f"Debt balance: {debt.get('available_to_spend', 0):.2f} {debt['currency']}",
                 }[lang]
             )
         else:
             lines.append(
                 {
-                    'uz': "Asosiy balansga tushadi",
-                    'ru': 'Попадает в основной баланс',
-                    'en': 'Goes to main balance',
+                    'uz': 'Balansga kirmaydi, bu qarzga olingan xarid',
+                    'ru': 'Не входит в баланс, это покупка в долг',
+                    'en': 'Not included in balance, this is a buy-on-credit entry',
+                }[lang]
+            )
+        if debt.get('source_name'):
+            lines.append(
+                {
+                    'uz': f"Kimdan: {debt['source_name']}",
+                    'ru': f"От кого: {debt['source_name']}",
+                    'en': f"Source: {debt['source_name']}",
                 }[lang]
             )
         if debt.get('paid_at'):
@@ -98,13 +107,13 @@ def _debts_keyboard(lang: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     builder.row(
         InlineKeyboardButton(
-            text={'uz': "💸 Qarz to'lash", 'ru': '💸 Погасить долг', 'en': '💸 Pay debt'}[lang],
+            text={'uz': "💳 Qarz to'lash", 'ru': '💳 Погасить долг', 'en': '💳 Pay debt'}[lang],
             callback_data='debt_pay_list',
         )
     )
     builder.row(
         InlineKeyboardButton(
-            text={'uz': '💵 Naqd qarz', 'ru': '💵 Деньги в долг', 'en': '💵 Borrow cash'}[lang],
+            text={'uz': '💵 Qarz olish', 'ru': '💵 Взять в долг', 'en': '💵 Borrow money'}[lang],
             callback_data='debt_add_cash',
         ),
         InlineKeyboardButton(
@@ -124,12 +133,12 @@ def _debts_keyboard(lang: str) -> InlineKeyboardMarkup:
 def _pay_list_keyboard(debts: list[dict], lang: str) -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     for debt in debts:
-      if debt['remaining'] <= 0:
-          continue
-      prefix = '💵' if debt.get('kind') == 'cash_loan' else '🧾'
-      title = debt.get('description') or debt.get('source_name') or _debt_kind_label(debt.get('kind'), lang)
-      label = f"{prefix} {title} - {debt['remaining']:.2f} {debt['currency']}"
-      builder.button(text=label[:64], callback_data=f"pay_select_{debt['id']}")
+        if debt['remaining'] <= 0:
+            continue
+        prefix = '💵' if debt.get('kind') == 'cash_loan' else '🧾'
+        title = debt.get('description') or debt.get('source_name') or _debt_kind_label(debt.get('kind'), lang)
+        label = f"{prefix} {title} - {debt['remaining']:.2f} {debt['currency']}"
+        builder.button(text=label[:64], callback_data=f"pay_select_{debt['id']}")
     if debts:
         builder.adjust(1)
     builder.row(
@@ -179,19 +188,20 @@ async def callback_add_debt(callback: CallbackQuery, state: FSMContext):
     debt_kind = 'cash_loan' if callback.data == 'debt_add_cash' else 'credit_purchase'
     await state.set_state(DebtStates.waiting_add_amount)
     await state.update_data(add_kind=debt_kind)
-    hint = {
+
+    hints = {
         'cash_loan': {
-            'uz': "Naqd qarz summasini kiriting. Masalan: 100000 yoki 10 USD",
-            'ru': "Введите сумму денежного долга. Например: 100000 или 10 USD",
-            'en': "Enter cash loan amount. Example: 100000 or 10 USD",
+            'uz': "Qarz summasini kiriting. Masalan: 100000 yoki 10 USD\nBu summa qarz balansga tushadi.",
+            'ru': 'Введите сумму долга. Например: 100000 или 10 USD\nЭта сумма попадёт в долговой баланс.',
+            'en': 'Enter borrowed amount. Example: 100000 or 10 USD\nThis amount goes to debt balance.',
         },
         'credit_purchase': {
-            'uz': "Qarzga xarid summasini kiriting. Masalan: 100000 yoki 10 USD",
-            'ru': "Введите сумму покупки в долг. Например: 100000 или 10 USD",
-            'en': "Enter buy-on-credit amount. Example: 100000 or 10 USD",
+            'uz': "Qarzga olingan xarid summasini kiriting. Masalan: 100000 yoki 10 USD\nBu summa balansga kirmaydi.",
+            'ru': 'Введите сумму покупки в долг. Например: 100000 или 10 USD\nЭта сумма не попадёт в баланс.',
+            'en': 'Enter buy-on-credit amount. Example: 100000 or 10 USD\nThis amount does not go to balance.',
         },
     }
-    await callback.message.answer(f"{hint[debt_kind][lang]}\nDefault: {user.default_currency}")
+    await callback.message.answer(f"{hints[debt_kind][lang]}\nDefault: {user.default_currency}")
     await callback.answer()
 
 
@@ -206,7 +216,12 @@ async def process_add_amount(message: Message, state: FSMContext):
         return
     await state.update_data(add_amount=amount, add_currency=currency)
     await state.set_state(DebtStates.waiting_add_description)
-    await message.answer(get_text('msg_debt_enter_description', lang))
+    prompts = {
+        'uz': 'Izoh yoki kimdan olinganini yozing:',
+        'ru': 'Введите описание или от кого взяли:',
+        'en': 'Enter description or lender/source:',
+    }
+    await message.answer(prompts.get(lang, prompts['en']))
 
 
 @router.message(DebtStates.waiting_add_description)
@@ -220,7 +235,7 @@ async def process_add_description(message: Message, state: FSMContext):
     user = await _load_user(message)
     lang = _normalize_lang(user.language_code)
     try:
-        await create_debt(user.id, amount, currency, description, debt_kind)
+        await create_debt(user.id, amount, currency, description, debt_kind, source_name=description)
     except Exception as exc:
         await state.clear()
         await message.answer(str(exc))
@@ -229,14 +244,14 @@ async def process_add_description(message: Message, state: FSMContext):
     await state.clear()
     ok = {
         'cash_loan': {
-            'uz': "✅ Naqd qarz qo'shildi va balansga tushdi",
-            'ru': '✅ Денежный долг добавлен и попал в баланс',
-            'en': '✅ Cash loan added to main balance',
+            'uz': '✅ Qarz qo\'shildi. Summa qarz balansga tushdi.',
+            'ru': '✅ Долг добавлен. Сумма попала в долговой баланс.',
+            'en': '✅ Debt created. Amount added to debt balance.',
         },
         'credit_purchase': {
-            'uz': "✅ Qarzga xarid qo'shildi",
-            'ru': '✅ Покупка в долг добавлена',
-            'en': '✅ Buy-on-credit debt added',
+            'uz': '✅ Qarzga xarid qo\'shildi. Balansga kiritilmadi.',
+            'ru': '✅ Покупка в долг добавлена. В баланс не включена.',
+            'en': '✅ Buy-on-credit debt added. Not included in balance.',
         },
     }
     await message.answer(ok[debt_kind][lang])
@@ -282,7 +297,12 @@ async def callback_pay_select(callback: CallbackQuery, state: FSMContext):
         'ru': f"Остаток: {target['remaining']:.2f} {target['currency']}",
         'en': f"Remaining: {target['remaining']:.2f} {target['currency']}",
     }[lang]
-    await callback.message.answer(f"{get_text('msg_debt_pay_prompt', lang).format(currency=target['currency'])}\n{remaining_text}")
+    prompt = {
+        'uz': "To'lov summasini kiriting:",
+        'ru': 'Введите сумму погашения:',
+        'en': 'Enter repayment amount:',
+    }
+    await callback.message.answer(f"{prompt[lang]}\n{remaining_text}")
     await callback.answer()
 
 
@@ -308,8 +328,8 @@ async def process_debt_payment(message: Message, state: FSMContext):
         return
 
     await state.clear()
-    done = {'uz': 'Qarz to\'landi', 'ru': 'Долг погашен', 'en': 'Debt paid'}[lang]
-    await message.answer(f"✅ {done}: {debt['remaining']:.2f} {debt['currency']}", parse_mode='HTML')
+    done = {'uz': "Qarz to'landi", 'ru': 'Долг погашен', 'en': 'Debt paid'}[lang]
+    await message.answer(f"✅ {done}: {debt['remaining']:.2f} {debt['currency']}")
 
     debts = await list_debts(user.id)
     await message.answer(_render_debts(debts, lang), parse_mode='HTML', reply_markup=_debts_keyboard(lang))
@@ -321,6 +341,6 @@ async def cmd_debt_add(message: Message, state: FSMContext):
     lang = _normalize_lang(user.language_code)
     await state.clear()
     await message.answer(
-        {'uz': "Qarz turini tanlang:", 'ru': 'Выберите тип долга:', 'en': 'Choose debt type:'}[lang],
+        {'uz': 'Qarz turini tanlang:', 'ru': 'Выберите тип долга:', 'en': 'Choose debt type:'}[lang],
         reply_markup=_debts_keyboard(lang),
     )

@@ -20,6 +20,7 @@ from database.finance import (
     allocate_expense_to_transfers,
     apply_debt_repayment,
     apply_debt_usage,
+    calculate_available_debt_source_native,
     convert_amount,
     get_available_debt_for_entry,
     get_resolved_group_id,
@@ -450,11 +451,14 @@ async def create_transaction(
 
         source = normalize_funding_source(funding_source)
         debt = None
+        main_component = Decimal("0.00")
+        debt_component = Decimal("0.00")
         if transaction_type == TransactionType.EXPENSE:
             if source == "main":
                 spendable = await get_spendable_main_balance(db, user, normalized_currency, current_group)
                 if normalized_amount > spendable:
                     raise ValueError(f"Insufficient main balance: {spendable:.2f} {normalized_currency}")
+                main_component = normalized_amount
             else:
                 if not debt_id:
                     raise ValueError("Debt source is required")
@@ -470,11 +474,20 @@ async def create_transaction(
                 ).scalar_one_or_none()
                 if not debt:
                     raise ValueError("Debt entry not found")
-                if normalize_debt_kind(getattr(debt, "kind", None)) != "credit_purchase":
-                    raise ValueError("Selected debt cannot be used as an expense source")
-                available = await get_available_debt_for_entry(db, debt, normalized_currency)
-                if normalized_amount > available:
-                    raise ValueError(f"Insufficient debt balance: {available:.2f} {normalized_currency}")
+                if normalize_debt_kind(getattr(debt, "kind", None)) != "cash_loan":
+                    raise ValueError("Only borrowed money can be used as an expense source")
+                spendable = await get_spendable_main_balance(db, user, normalized_currency, current_group)
+                main_component = min(normalized_amount, spendable)
+                debt_component = (normalized_amount - main_component).quantize(MONEY_QUANT, rounding=ROUND_HALF_UP)
+                if debt_component <= 0:
+                    source = "main"
+                    debt = None
+                else:
+                    available = await get_available_debt_for_entry(db, debt, normalized_currency)
+                    if debt_component > available:
+                        raise ValueError(
+                            f"Insufficient debt balance: {available:.2f} {normalized_currency}. Create a new debt first."
+                        )
 
         tx = Transaction(
             user_id=user.id,
@@ -494,23 +507,23 @@ async def create_transaction(
         await db.flush()
 
         if transaction_type == TransactionType.EXPENSE:
-            if source == "main":
+            if main_component > 0:
                 await allocate_expense_to_transfers(
                     db,
                     user_id=user.id,
                     group_id=current_group,
                     transaction_id=tx.id,
-                    amount=normalized_amount,
+                    amount=main_component,
                     currency=normalized_currency,
                     category_id=category.id if category else None,
                     description=description,
                 )
-            elif debt:
+            if debt and debt_component > 0:
                 await apply_debt_usage(
                     db,
                     debt=debt,
                     transaction=tx,
-                    amount=normalized_amount,
+                    amount=debt_component,
                     currency=normalized_currency,
                     note=description,
                 )
@@ -526,6 +539,8 @@ async def create_transaction(
                 "amount": str(normalized_amount),
                 "currency": normalized_currency,
                 "funding_source": source,
+                "main_used_amount": str(main_component),
+                "debt_used_amount": str(debt_component),
                 "category_id": category.id if category else None,
             },
         )
@@ -598,13 +613,14 @@ async def get_user_statistics(
 
         for tx in transactions:
             converted = await convert_amount(db, tx.amount, tx.currency, display_currency)
-            if tx.type == TransactionType.INCOME or (
-                tx.type == TransactionType.DEBT and normalize_debt_kind(getattr(tx, "debt_kind", None)) == "cash_loan"
-            ):
+            if tx.type == TransactionType.INCOME:
                 total_income += converted
-            elif tx.type == TransactionType.EXPENSE:
+            elif tx.type == TransactionType.EXPENSE or (
+                tx.type == TransactionType.DEBT and normalize_debt_kind(getattr(tx, "debt_kind", None)) == "credit_purchase"
+            ):
                 total_expense += converted
-                category_sums[tx.category_id] = category_sums.get(tx.category_id, Decimal("0")) + converted
+                if tx.type == TransactionType.EXPENSE:
+                    category_sums[tx.category_id] = category_sums.get(tx.category_id, Decimal("0")) + converted
 
         sent_transfers = (
             await db.execute(
@@ -1240,7 +1256,7 @@ async def create_debt(
                 type=TransactionType.DEBT,
                 amount=debt_amount,
                 currency=debt_currency,
-                description=description or source_name or ("Cash loan received" if debt_kind == "cash_loan" else "Buy on credit"),
+                description=description or source_name or ("Borrowed money" if debt_kind == "cash_loan" else "Buy on credit"),
                 funding_source="main",
                 debt_kind=debt_kind,
                 transaction_date=datetime.now(timezone.utc),
@@ -1286,9 +1302,7 @@ async def list_debts(user_id: int) -> list[dict[str, Any]]:
         payload = []
         for debt in debts:
             debt_kind = normalize_debt_kind(getattr(debt, "kind", None))
-            available = Decimal("0")
-            if debt_kind == "credit_purchase":
-                available = max(Decimal("0"), _to_decimal(debt.amount) - _to_decimal(debt.used_amount))
+            available = calculate_available_debt_source_native(debt)
             payload.append(
                 {
                     "id": str(debt.id),
