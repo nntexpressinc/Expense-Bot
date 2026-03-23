@@ -95,3 +95,5 @@ miniapp/.env
 miniapp/.env.local
 miniapp/.env.*.local
 miniapp/.env.production.local
+
+*.tar.gz
