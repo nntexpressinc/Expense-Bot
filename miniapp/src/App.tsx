@@ -17,7 +17,8 @@ function App() {
   const { webApp, user } = useTelegram()
   const [isReady, setIsReady] = useState(false)
   const allowDevPreview = import.meta.env.DEV && !webApp
-  const { settings, theme, isLoading } = useAppSettings()
+  const hasTelegramInitData = Boolean(webApp?.initData)
+  const { settings, theme, isLoading } = useAppSettings(allowDevPreview || hasTelegramInitData)
   const canManageAdmin = Boolean(settings?.is_group_admin || settings?.is_admin)
 
   useEffect(() => {

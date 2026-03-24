@@ -75,32 +75,16 @@ export default function Dashboard() {
       <Card>
         <SectionTitle title={t('quickActions', language)} />
         <div className="grid grid-cols-1 gap-3">
-          <Link to="/transactions" className="surface-card-muted px-4 py-4">
-            <p className="text-sm font-semibold text-[var(--text)]">{t('addIncome', language)} / {t('addExpense', language)}</p>
-            <p className="mt-1 text-sm text-[var(--text-soft)]">{t('activity', language)}</p>
-          </Link>
-          <Link to="/transfers" className="surface-card-muted px-4 py-4">
-            <p className="text-sm font-semibold text-[var(--text)]">{t('createTransfer', language)}</p>
-            <p className="mt-1 text-sm text-[var(--text-soft)]">{t('transfers', language)}</p>
-          </Link>
-          <Link to="/debts" className="surface-card-muted px-4 py-4">
-            <p className="text-sm font-semibold text-[var(--text)]">{t('manageDebts', language)}</p>
-            <p className="mt-1 text-sm text-[var(--text-soft)]">{t('debtBalance', language)}</p>
-          </Link>
           {settings?.is_group_admin || settings?.is_admin ? (
             <Link to="/team" className="surface-card-muted px-4 py-4">
               <p className="text-sm font-semibold text-[var(--text)]">{t('manageWorkers', language)}</p>
               <p className="mt-1 text-sm text-[var(--text-soft)]">{t('workers', language)}</p>
             </Link>
           ) : null}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Link to="/statistics" className="surface-card-muted px-4 py-4">
               <p className="text-sm font-semibold text-[var(--text)]">{t('statistics', language)}</p>
               <p className="mt-1 text-sm text-[var(--text-soft)]">{t('openStatistics', language)}</p>
-            </Link>
-            <Link to="/settings" className="surface-card-muted px-4 py-4">
-              <p className="text-sm font-semibold text-[var(--text)]">{t('settings', language)}</p>
-              <p className="mt-1 text-sm text-[var(--text-soft)]">{t('language', language)} - {t('theme', language)}</p>
             </Link>
           </div>
         </div>

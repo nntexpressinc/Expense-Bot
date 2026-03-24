@@ -30,12 +30,13 @@ const applyTheme = (theme?: 'light' | 'dark') => {
   document.body.dataset.theme = safeTheme
 }
 
-export const useAppSettings = () => {
+export const useAppSettings = (enabled = true) => {
   const queryClient = useQueryClient()
 
   const query = useQuery({
     queryKey: SETTINGS_QUERY_KEY,
     queryFn: getUserSettings,
+    enabled,
     staleTime: 30_000,
     retry: 1,
   })

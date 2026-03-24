@@ -25,14 +25,15 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
-      const lang = (window.Telegram?.WebApp?.initDataUnsafe?.user?.language_code || 'uz').toLowerCase()
+    const webApp = window.Telegram?.WebApp
+    if (error.response?.status === 401 && webApp?.initData) {
+      const lang = (webApp.initDataUnsafe?.user?.language_code || 'uz').toLowerCase()
       const message = lang.startsWith('ru')
         ? 'Ошибка авторизации. Перезапустите приложение.'
         : lang.startsWith('en')
           ? 'Authorization error. Please reopen the app.'
           : 'Avtorizatsiya xatosi. Iltimos, ilovani qayta oching.'
-      window.Telegram?.WebApp?.showAlert(message)
+      webApp.showAlert(message)
     }
     return Promise.reject(error)
   }

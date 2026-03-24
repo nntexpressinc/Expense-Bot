@@ -16,12 +16,13 @@ from config.i18n import get_text
 
 def get_main_menu_keyboard(lang: str = 'uz', miniapp_url: str = None) -> ReplyKeyboardMarkup:
     builder = ReplyKeyboardBuilder()
+    safe_miniapp_url = miniapp_url.rstrip('/') + '/' if miniapp_url else None
 
-    if miniapp_url:
+    if safe_miniapp_url:
         builder.row(
             KeyboardButton(
                 text=get_text('btn_open_miniapp', lang),
-                web_app=WebAppInfo(url=miniapp_url),
+                web_app=WebAppInfo(url=safe_miniapp_url),
             )
         )
 
