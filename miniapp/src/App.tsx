@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { useTelegram } from '@/hooks/useTelegram'
 import { useAppSettings } from '@/hooks/useAppSettings'
 import Dashboard from '@/components/Dashboard'
@@ -12,6 +12,20 @@ import { AdminPanel } from '@/components/AdminPanel'
 import Workers from '@/components/Workers'
 import BottomNav from '@/components/shared/BottomNav'
 import { LoadingState } from '@/components/shared/States'
+
+function ScrollToTop() {
+  const location = useLocation()
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'auto' })
+    const appShell = document.querySelector('.app-shell') as HTMLElement | null
+    const appContent = document.querySelector('.app-content') as HTMLElement | null
+    appShell?.scrollTo({ top: 0, behavior: 'auto' })
+    appContent?.scrollTo({ top: 0, behavior: 'auto' })
+  }, [location.pathname])
+
+  return null
+}
 
 function App() {
   const { webApp, user, authReady } = useTelegram()
@@ -45,6 +59,7 @@ function App() {
     <BrowserRouter>
       <div className="app-shell">
         <div className="app-content">
+          <ScrollToTop />
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/transactions" element={<Transactions />} />

@@ -79,7 +79,7 @@ export default function Workers() {
   })
   const attendanceQuery = useQuery({
     queryKey: ['workers-attendance', month.start, month.end],
-    queryFn: () => listAttendanceEntries({ start_date: month.start, end_date: month.end, limit: 80 }),
+    queryFn: () => listAttendanceEntries({ start_date: month.start, end_date: month.end, limit: 300 }),
   })
 
   const refresh = async () => {
@@ -169,6 +169,10 @@ export default function Workers() {
   const totals = summaryQuery.data?.totals
   const attendanceItems = attendanceQuery.data || []
   const markedTodayCount = workersQuery.data?.filter((worker) => worker.today_status).length || 0
+  const attendanceSummaryItems = (workersQuery.data || []).map((worker) => ({
+    worker,
+    summary: workerSummaryMap.get(worker.id),
+  }))
 
   const submitWorker = async (event: FormEvent) => {
     event.preventDefault()
@@ -233,8 +237,8 @@ export default function Workers() {
           </div>
           <div className="surface-card-muted px-4 py-4">
             <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('attendance', language)}</p>
-            <p className="mt-2 text-xl font-semibold text-[var(--text)]">{markedTodayCount}</p>
-            <p className="mt-1 text-xs text-[var(--text-soft)]">{t('day', language)}</p>
+            <p className="mt-2 text-xl font-semibold text-[var(--text)]">{attendanceItems.length}</p>
+            <p className="mt-1 text-xs text-[var(--text-soft)]">{t('totalMarked', language)} · {markedTodayCount} / {t('day', language).toLowerCase()}</p>
           </div>
           <div className="surface-card-muted px-4 py-4">
             <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('payable', language)}</p>
@@ -283,7 +287,9 @@ export default function Workers() {
                         {worker.role_name || '-'} - {t(worker.payment_type as never, language)}
                       </p>
                       <p className="mt-1 text-sm text-[var(--text-soft)]">
-                        {formatMoney(Number(worker.rate), worker.currency, locale)}
+                        {worker.payment_type === 'monthly'
+                          ? `${t('salary', language)}: ${formatMoney(Number(worker.rate), worker.currency, locale)}`
+                          : formatMoney(Number(worker.rate), worker.currency, locale)}
                       </p>
                     </div>
                     <div className="text-right">
@@ -296,6 +302,19 @@ export default function Workers() {
 
                   {summary ? (
                     <div className="mt-3 space-y-1 text-sm text-[var(--text-soft)]">
+                      <p>
+                        {t('attendance', language)}: <span className="font-semibold text-[var(--text)]">{summary.attendance_count || 0}</span>
+                        {worker.payment_type === 'volume' && summary.total_units
+                          ? <span className="ml-2 text-[var(--text-soft)]">({t('customUnits', language)}: {summary.total_units})</span>
+                          : null}
+                      </p>
+                      <p>
+                        {t('present', language)}: <span className="font-semibold text-[var(--text)]">{summary.present_count || 0}</span>
+                        <span className="mx-2 text-[var(--text-muted)]">·</span>
+                        {t('halfDay', language)}: <span className="font-semibold text-[var(--text)]">{summary.half_day_count || 0}</span>
+                        <span className="mx-2 text-[var(--text-muted)]">·</span>
+                        {t('absent', language)}: <span className="font-semibold text-[var(--text)]">{summary.absent_count || 0}</span>
+                      </p>
                       <p>{t('advances', language)}: <span className="font-semibold text-[var(--text)]">{formatMoney(Number(summary.advance_amount || 0), summary.currency, locale)}</span></p>
                       <p>{t('payments', language)}: <span className="font-semibold text-[var(--text)]">{formatMoney(Number(summary.paid_amount || 0), summary.currency, locale)}</span></p>
                     </div>
@@ -369,6 +388,37 @@ export default function Workers() {
           </div>
         ) : (
           <EmptyState title={t('noWorkers', language)} />
+        )}
+      </Card>
+
+      <Card>
+        <SectionTitle title={t('attendanceSummary', language)} hint={`${month.start} - ${month.end}`} />
+        {attendanceSummaryItems.length ? (
+          <div className="space-y-2">
+            {attendanceSummaryItems.map(({ worker, summary }) => (
+              <div key={worker.id} className="surface-card-muted px-4 py-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--text)]">{worker.full_name}</p>
+                    <p className="mt-1 text-xs text-[var(--text-soft)]">{worker.role_name || t(worker.payment_type as never, language)}</p>
+                  </div>
+                  <div className="text-right text-xs text-[var(--text-soft)]">
+                    <p>{t('attendance', language)}: <span className="font-semibold text-[var(--text)]">{summary?.attendance_count || 0}</span></p>
+                    {worker.payment_type === 'volume' ? (
+                      <p className="mt-1">{t('customUnits', language)}: <span className="font-semibold text-[var(--text)]">{summary?.total_units || 0}</span></p>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--text-soft)]">
+                  <span>{t('present', language)}: <span className="font-semibold text-[var(--text)]">{summary?.present_count || 0}</span></span>
+                  <span>{t('halfDay', language)}: <span className="font-semibold text-[var(--text)]">{summary?.half_day_count || 0}</span></span>
+                  <span>{t('absent', language)}: <span className="font-semibold text-[var(--text)]">{summary?.absent_count || 0}</span></span>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title={t('attendance', language)} hint={t('retry', language)} />
         )}
       </Card>
 

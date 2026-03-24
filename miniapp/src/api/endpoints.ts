@@ -206,6 +206,11 @@ export interface WorkerSummary {
   payable_amount: number
   quantity?: number
   attendance_count?: number
+  present_count?: number
+  absent_count?: number
+  half_day_count?: number
+  custom_count?: number
+  total_units?: number
   advances_count?: number
   payments_count?: number
   status: 'unpaid' | 'partial' | 'paid'

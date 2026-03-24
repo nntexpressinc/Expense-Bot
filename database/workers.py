@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Optional
 
@@ -17,10 +17,6 @@ def _to_decimal(value) -> Decimal:
     return Decimal(str(value))
 
 
-def _period_days(start_date: date, end_date: date) -> int:
-    return max(1, (end_date - start_date).days + 1)
-
-
 def attendance_units(entry: AttendanceEntry) -> Decimal:
     status = (entry.status or "present").lower()
     units = _to_decimal(entry.units or 0)
@@ -31,6 +27,33 @@ def attendance_units(entry: AttendanceEntry) -> Decimal:
     if status == "custom":
         return units
     return units if units > 0 else Decimal("1")
+
+
+def _attendance_breakdown(attendance_entries: list[AttendanceEntry]) -> dict[str, Decimal]:
+    present_count = Decimal("0")
+    absent_count = Decimal("0")
+    half_day_count = Decimal("0")
+    custom_count = Decimal("0")
+
+    for entry in attendance_entries:
+        status = (entry.status or "present").lower()
+        if status == "absent":
+            absent_count += Decimal("1")
+        elif status == "half_day":
+            half_day_count += Decimal("1")
+        elif status == "custom":
+            custom_count += Decimal("1")
+        else:
+            present_count += Decimal("1")
+
+    total_units = sum(attendance_units(entry) for entry in attendance_entries)
+    return {
+        "present_count": present_count,
+        "absent_count": absent_count,
+        "half_day_count": half_day_count,
+        "custom_count": custom_count,
+        "total_units": total_units,
+    }
 
 
 async def calculate_worker_period_summary(
@@ -77,17 +100,18 @@ async def calculate_worker_period_summary(
     rate = _to_decimal(worker.rate)
     payment_type = (worker.payment_type or "daily").lower()
 
+    attendance_breakdown = _attendance_breakdown(attendance_entries)
+
     if payment_type == "daily":
-        quantity = sum(attendance_units(entry) for entry in attendance_entries)
+        quantity = attendance_breakdown["total_units"]
         base_native = quantity * rate
     elif payment_type == "monthly":
-        total_days = Decimal(str(_period_days(start_date, end_date)))
-        active_from = max(start_date, worker.start_date)
-        active_days = Decimal(str(_period_days(active_from, end_date))) if active_from <= end_date else Decimal("0")
-        quantity = active_days
-        base_native = (rate * active_days / total_days) if total_days > 0 else Decimal("0")
+        # Monthly salary is treated as a fixed amount for the period.
+        # If the worker is active at any point in the selected period, pay the full salary.
+        quantity = Decimal("1") if worker.start_date <= end_date else Decimal("0")
+        base_native = rate if quantity > 0 else Decimal("0")
     else:
-        quantity = sum(attendance_units(entry) for entry in attendance_entries)
+        quantity = attendance_breakdown["total_units"]
         base_native = quantity * rate
 
     advance_native = sum(_to_decimal(item.amount) for item in advances)
@@ -121,6 +145,11 @@ async def calculate_worker_period_summary(
         "status": status,
         "currency": currency,
         "attendance_count": len(attendance_entries),
+        "present_count": float(attendance_breakdown["present_count"]),
+        "absent_count": float(attendance_breakdown["absent_count"]),
+        "half_day_count": float(attendance_breakdown["half_day_count"]),
+        "custom_count": float(attendance_breakdown["custom_count"]),
+        "total_units": float(attendance_breakdown["total_units"].quantize(MONEY_QUANT, rounding=ROUND_HALF_UP)),
         "advances_count": len(advances),
         "payments_count": len(payments),
     }

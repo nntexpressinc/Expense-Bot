@@ -9,7 +9,7 @@ from api.routers.workers import WorkerMoneyRequest, _create_worker_money_record
 from database.category_labels import present_category_name
 from database.finance import apply_debt_repayment, calculate_available_debt_source_native, normalize_debt_kind
 from database.group_context import normalize_group_role, normalize_lang, normalize_theme
-from database.workers import attendance_units
+from database.workers import attendance_units, calculate_worker_period_summary
 
 
 def test_language_and_theme_normalization():
@@ -74,6 +74,67 @@ def test_attendance_units_supports_daily_half_day_and_custom():
 def test_worker_period_inputs_are_plain_dates():
     today = date.today()
     assert isinstance(today, date)
+
+
+@pytest.mark.asyncio
+async def test_monthly_worker_summary_uses_full_salary_for_active_month(monkeypatch):
+    class DummyScalarResult:
+        def __init__(self, items):
+            self.items = items
+
+        def scalars(self):
+            return self
+
+        def all(self):
+            return self.items
+
+    class DummyDb:
+        def __init__(self):
+            self.calls = 0
+
+        async def execute(self, _query):
+            self.calls += 1
+            if self.calls == 1:
+                attendance = [
+                    SimpleNamespace(status="present", units=Decimal("0")),
+                    SimpleNamespace(status="half_day", units=Decimal("0")),
+                    SimpleNamespace(status="absent", units=Decimal("0")),
+                ]
+                return DummyScalarResult(attendance)
+            if self.calls == 2:
+                return DummyScalarResult([SimpleNamespace(amount=Decimal("50"))])
+            return DummyScalarResult([])
+
+    async def fake_convert_amount(_db, amount, _source, _target):
+        return Decimal(str(amount))
+
+    monkeypatch.setattr("database.workers.convert_amount", fake_convert_amount)
+
+    summary = await calculate_worker_period_summary(
+        DummyDb(),
+        worker=SimpleNamespace(
+            id="worker-1",
+            group_id=1,
+            full_name="Ali",
+            role_name="Builder",
+            payment_type="monthly",
+            rate=Decimal("600"),
+            currency="USD",
+            start_date=date(2026, 3, 24),
+        ),
+        start_date=date(2026, 3, 1),
+        end_date=date(2026, 3, 31),
+        target_currency="USD",
+    )
+
+    assert summary["base_amount"] == 600.0
+    assert summary["advance_amount"] == 50.0
+    assert summary["payable_amount"] == 550.0
+    assert summary["quantity"] == 1.0
+    assert summary["attendance_count"] == 3
+    assert summary["present_count"] == 1.0
+    assert summary["half_day_count"] == 1.0
+    assert summary["absent_count"] == 1.0
 
 
 def test_system_categories_are_localized_by_language():
