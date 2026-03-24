@@ -63,6 +63,7 @@ class GroupUserOverviewItem(BaseModel):
     display_name: str
     username: Optional[str]
     role: str
+    currency: str
     total_balance: float
     debt_balance: float
     outstanding_debt_balance: float
@@ -265,6 +266,7 @@ async def get_group_user_overview(
                 "display_name": display_name,
                 "username": user.username,
                 "role": membership.role,
+                "currency": str(balance["currency"]),
                 "total_balance": float(balance["total_balance"]),
                 "debt_balance": float(balance["debt_balance"]),
                 "outstanding_debt_balance": float(balance["outstanding_debt_balance"]),

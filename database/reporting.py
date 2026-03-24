@@ -682,17 +682,20 @@ async def generate_report_download(
     archive_stream = BytesIO()
     with zipfile.ZipFile(archive_stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr(overview_filename, overview_content)
+        manifest_lines = [f"Group report: {overview_filename}", ""]
         for member in members:
             member_name = _safe_filename_part(_display_name(member))
             member_content, member_filename = await generate_excel_report(
                 db,
                 member,
                 period,
-                filename_prefix=f"{filename_prefix}_{member_name}",
+                filename_prefix=f"{filename_prefix}_{member_name}_{member.id}",
                 include_admin_sheets=False,
                 group_id_override=group_id,
             )
             archive.writestr(member_filename, member_content)
+            manifest_lines.append(f"{member.id}: {member_filename}")
+        archive.writestr("README.txt", "\n".join(manifest_lines))
 
     archive_stream.seek(0)
     group = await get_active_group(db, user)

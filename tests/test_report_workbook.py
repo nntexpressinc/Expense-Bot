@@ -1,8 +1,11 @@
 from io import BytesIO
+import zipfile
+from types import SimpleNamespace
 
 from openpyxl import load_workbook
+import pytest
 
-from database.reporting import build_excel_workbook
+from database.reporting import build_excel_workbook, generate_report_download
 
 
 def _sample_payload(admin_mode: bool):
@@ -66,3 +69,63 @@ def test_build_excel_workbook_admin_monitoring_sheets():
     assert "Audit Log" in workbook.sheetnames
     assert workbook["Workers"]["A4"].value == "Ali"
     assert workbook["Workers"]["A5"].value == "Total"
+
+
+@pytest.mark.asyncio
+async def test_generate_report_download_admin_bundle_contains_group_and_member_files(monkeypatch):
+    async def fake_is_group_admin(*_args, **_kwargs):
+        return True
+
+    async def fake_get_active_group_id(*_args, **_kwargs):
+        return 7
+
+    async def fake_get_active_group(*_args, **_kwargs):
+        return SimpleNamespace(name="Toshkent Office")
+
+    async def fake_generate_excel_report(_db, user, _period, *, filename_prefix="report", **_kwargs):
+        safe_name = str(getattr(user, "id", "group"))
+        return b"xlsx", f"{filename_prefix}_{safe_name}.xlsx"
+
+    class _ScalarResult:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def all(self):
+            return self._rows
+
+    class _ExecuteResult:
+        def __init__(self, rows):
+            self._rows = rows
+
+        def scalars(self):
+            return _ScalarResult(self._rows)
+
+    class DummyDb:
+        async def execute(self, _query):
+            members = [
+                SimpleNamespace(id=10, first_name="Ali", last_name=None, username="ali"),
+                SimpleNamespace(id=11, first_name="Vali", last_name=None, username="vali"),
+            ]
+            return _ExecuteResult(members)
+
+    monkeypatch.setattr("database.reporting.is_group_admin", fake_is_group_admin)
+    monkeypatch.setattr("database.reporting.get_active_group_id", fake_get_active_group_id)
+    monkeypatch.setattr("database.reporting.get_active_group", fake_get_active_group)
+    monkeypatch.setattr("database.reporting.generate_excel_report", fake_generate_excel_report)
+
+    content, filename, media_type = await generate_report_download(
+        DummyDb(),
+        SimpleNamespace(id=1, first_name="Admin", last_name=None, username="admin"),
+        "month",
+        filename_prefix="statistics",
+    )
+
+    archive = zipfile.ZipFile(BytesIO(content))
+    names = set(archive.namelist())
+
+    assert media_type == "application/zip"
+    assert filename.endswith(".zip")
+    assert "README.txt" in names
+    assert any(name.startswith("statistics_group_") for name in names)
+    assert any(name.startswith("statistics_ali_10_") for name in names)
+    assert any(name.startswith("statistics_vali_11_") for name in names)

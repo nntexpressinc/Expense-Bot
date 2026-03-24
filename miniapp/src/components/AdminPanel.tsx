@@ -209,15 +209,15 @@ export const AdminPanel = () => {
                 <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
                   <div className="rounded-2xl border border-[var(--border)] px-3 py-3">
                     <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('totalBalance', language)}</p>
-                    <p className="mt-2 text-sm font-semibold text-[var(--text)]">{formatMoney(item.total_balance, settings?.default_currency || 'UZS', locale)}</p>
+                    <p className="mt-2 text-sm font-semibold text-[var(--text)]">{formatMoney(item.total_balance, item.currency, locale)}</p>
                   </div>
                   <div className="rounded-2xl border border-[var(--border)] px-3 py-3">
                     <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('debtBalance', language)}</p>
-                    <p className="mt-2 text-sm font-semibold text-[var(--text)]">{formatMoney(item.debt_balance, settings?.default_currency || 'UZS', locale)}</p>
+                    <p className="mt-2 text-sm font-semibold text-[var(--text)]">{formatMoney(item.debt_balance, item.currency, locale)}</p>
                   </div>
                   <div className="rounded-2xl border border-[var(--border)] px-3 py-3">
                     <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('outstandingDebt', language)}</p>
-                    <p className="mt-2 text-sm font-semibold text-[var(--text)]">{formatMoney(item.outstanding_debt_balance, settings?.default_currency || 'UZS', locale)}</p>
+                    <p className="mt-2 text-sm font-semibold text-[var(--text)]">{formatMoney(item.outstanding_debt_balance, item.currency, locale)}</p>
                   </div>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--text-soft)]">

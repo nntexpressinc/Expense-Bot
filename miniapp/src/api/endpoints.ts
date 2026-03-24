@@ -234,6 +234,7 @@ export interface GroupUserOverviewItem {
   display_name: string
   username?: string
   role: 'admin' | 'member'
+  currency: 'UZS' | 'USD' | string
   total_balance: number
   debt_balance: number
   outstanding_debt_balance: number
