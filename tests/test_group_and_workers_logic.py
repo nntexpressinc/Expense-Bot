@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
+from api.routers.groups import get_group_user_overview
 from api.routers.workers import WorkerMoneyRequest, _create_worker_money_record
 from database.category_labels import present_category_name
 from database.finance import apply_debt_repayment, calculate_available_debt_source_native, normalize_debt_kind
@@ -202,3 +203,79 @@ async def test_worker_payment_rejects_amount_above_payable(monkeypatch):
             payload=WorkerMoneyRequest(amount=Decimal("50"), currency="USD", payment_date=date(2026, 3, 24), note=None),
             record_type="payment",
         )
+
+
+@pytest.mark.asyncio
+async def test_group_overview_uses_viewer_currency(monkeypatch):
+    class DummyResult:
+        def __init__(self, value):
+            self.value = value
+
+        def all(self):
+            return self.value
+
+        def scalars(self):
+            return self
+
+        def all(self):
+            return self.value
+
+    class DummyDb:
+        def __init__(self):
+            self.calls = 0
+
+        async def execute(self, _query):
+            self.calls += 1
+            if self.calls == 1:
+                membership = SimpleNamespace(role="member")
+                user = SimpleNamespace(id=10, username="ali", first_name="Ali", last_name="Valiyev")
+                return DummyResult([(membership, user)])
+            if self.calls == 2:
+                tx = SimpleNamespace(
+                    id="tx-1",
+                    type=SimpleNamespace(value="income"),
+                    amount=Decimal("184500"),
+                    currency="UZS",
+                    description="Demo income",
+                    transaction_date=date(2026, 3, 24),
+                )
+                return DummyResult([tx])
+            return DummyResult([SimpleNamespace(status="active")])
+
+    async def fake_is_group_admin(*_args, **_kwargs):
+        return True
+
+    async def fake_get_user_balance_summary(_db, _user, target_currency=None, group_id=None):
+        assert target_currency == "USD"
+        assert group_id == 1
+        return {
+            "currency": "USD",
+            "total_balance": Decimal("15"),
+            "debt_balance": Decimal("45"),
+            "outstanding_debt_balance": Decimal("50"),
+        }
+
+    async def fake_convert_amount(_db, amount, source_currency, target_currency):
+        assert amount == Decimal("184500")
+        assert source_currency == "UZS"
+        assert target_currency == "USD"
+        return Decimal("15")
+
+    async def fake_check_user_admin_status(*_args, **_kwargs):
+        return False
+
+    monkeypatch.setattr("api.routers.groups.is_group_admin", fake_is_group_admin)
+    monkeypatch.setattr("api.routers.groups.check_user_admin_status", fake_check_user_admin_status)
+    monkeypatch.setattr("api.routers.groups.get_user_balance_summary", fake_get_user_balance_summary)
+    monkeypatch.setattr("api.routers.groups.convert_amount", fake_convert_amount)
+
+    result = await get_group_user_overview(
+        1,
+        current_user=SimpleNamespace(language_code="en", default_currency="USD"),
+        db=DummyDb(),
+    )
+
+    assert result[0]["currency"] == "USD"
+    assert result[0]["total_balance"] == 15.0
+    assert result[0]["recent_transactions"][0]["currency"] == "USD"
+    assert result[0]["recent_transactions"][0]["amount"] == 15.0

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.routers.auth import get_current_user
 from config.admin import check_user_admin_status
 from database.audit import write_audit_log
-from database.finance import get_user_balance_summary
+from database.finance import convert_amount, get_user_balance_summary, normalize_currency
 from database.group_context import (
     add_user_to_group,
     create_group_for_user,
@@ -235,6 +235,7 @@ async def get_group_user_overview(
     if not await is_group_admin(db, current_user, group_id) and not await check_user_admin_status(current_user):
         raise HTTPException(status_code=403, detail=_t(lang, "Ruxsat yo'q", "Доступ запрещён", "Access denied"))
 
+    display_currency = normalize_currency(current_user.default_currency, "UZS")
     rows = (
         await db.execute(
             select(UserGroup, User)
@@ -246,7 +247,12 @@ async def get_group_user_overview(
 
     response: list[dict] = []
     for membership, user in rows:
-        balance = await get_user_balance_summary(db, user, group_id=group_id)
+        balance = await get_user_balance_summary(
+            db,
+            user,
+            target_currency=display_currency,
+            group_id=group_id,
+        )
         recent_transactions = (
             await db.execute(
                 select(Transaction)
@@ -266,7 +272,7 @@ async def get_group_user_overview(
                 "display_name": display_name,
                 "username": user.username,
                 "role": membership.role,
-                "currency": str(balance["currency"]),
+                "currency": display_currency,
                 "total_balance": float(balance["total_balance"]),
                 "debt_balance": float(balance["debt_balance"]),
                 "outstanding_debt_balance": float(balance["outstanding_debt_balance"]),
@@ -276,8 +282,8 @@ async def get_group_user_overview(
                     {
                         "id": str(item.id),
                         "type": item.type.value if hasattr(item.type, "value") else str(item.type),
-                        "amount": float(item.amount),
-                        "currency": item.currency,
+                        "amount": float(await convert_amount(db, item.amount, item.currency, display_currency)),
+                        "currency": display_currency,
                         "description": item.description or "-",
                         "date": item.transaction_date.isoformat(),
                     }
