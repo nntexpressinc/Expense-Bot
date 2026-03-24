@@ -25,22 +25,31 @@ const monthBounds = () => {
 
 const workerCopy = {
   uz: {
-    todayPresent: '? Bugun keldi',
-    todayMarked: '? Bugun belgilandi',
+    todayPresent: '\u2705 Bugun keldi',
+    todayMarked: '\u2705 Bugun belgilangan',
+    attendanceMissing: 'Bugungi davomat hali belgilanmagan',
+    attendanceSaved: 'Bugungi davomat saqlangan',
     payFromBalance: "To'lov asosiy balansdan yechiladi",
     optionalRole: 'Vazifa (ixtiyoriy)',
+    volumeHint: 'Bugungi birlikni kiriting',
   },
   ru: {
-    todayPresent: '? Отметить сегодня',
-    todayMarked: '? На сегодня отмечено',
+    todayPresent: '\u2705 Отметить приход сегодня',
+    todayMarked: '\u2705 На сегодня уже отмечено',
+    attendanceMissing: 'Сегодняшняя посещаемость ещё не отмечена',
+    attendanceSaved: 'Сегодняшняя посещаемость сохранена',
     payFromBalance: 'Выплата спишется с основного баланса',
     optionalRole: 'Роль (необязательно)',
+    volumeHint: 'Введите объём за сегодня',
   },
   en: {
-    todayPresent: '? Mark present today',
-    todayMarked: '? Marked for today',
+    todayPresent: '\u2705 Mark present today',
+    todayMarked: '\u2705 Already marked for today',
+    attendanceMissing: 'Today attendance is not marked yet',
+    attendanceSaved: 'Today attendance is saved',
     payFromBalance: 'Payment is deducted from main balance',
     optionalRole: 'Role (optional)',
+    volumeHint: 'Enter today units',
   },
 } as const
 
@@ -247,7 +256,7 @@ export default function Workers() {
             {workersQuery.data.map((worker) => {
               const summary = workerSummaryMap.get(worker.id)
               const payableAmount = Number(summary?.payable_amount || 0)
-              const dailyMarked = Boolean(worker.today_status)
+              const attendanceMarked = Boolean(worker.today_status)
               const payButtonLabel = payableAmount > 0
                 ? `${t('pay', language)} ${formatMoney(payableAmount, summary?.currency || worker.currency, locale)}`
                 : t('pay', language)
@@ -258,7 +267,7 @@ export default function Workers() {
                     <div>
                       <p className="text-base font-semibold text-[var(--text)]">{worker.full_name}</p>
                       <p className="mt-1 text-sm text-[var(--text-soft)]">
-                        {t(worker.payment_type, language)}{worker.role_name ? ` - ${worker.role_name}` : ''}
+                        {worker.role_name || '-'} - {t(worker.payment_type, language)}
                       </p>
                       <p className="mt-1 text-sm text-[var(--text-soft)]">
                         {formatMoney(Number(worker.rate), worker.currency, locale)}
@@ -272,30 +281,43 @@ export default function Workers() {
                     </div>
                   </div>
 
-                  {worker.payment_type === 'daily' ? (
-                    <button
-                      type="button"
-                      className={`${dailyMarked ? 'secondary-button' : 'primary-button'} mt-4 w-full`}
-                      onClick={() => void markTodayPresent(worker.id)}
-                    >
-                      {dailyMarked ? copy.todayMarked : copy.todayPresent}
-                    </button>
+                  {summary ? (
+                    <div className="mt-3 space-y-1 text-sm text-[var(--text-soft)]">
+                      <p>{t('advances', language)}: <span className="font-semibold text-[var(--text)]">{formatMoney(Number(summary.advance_amount || 0), summary.currency, locale)}</span></p>
+                      <p>{t('payments', language)}: <span className="font-semibold text-[var(--text)]">{formatMoney(Number(summary.paid_amount || 0), summary.currency, locale)}</span></p>
+                    </div>
                   ) : null}
 
                   {worker.payment_type === 'volume' ? (
-                    <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
-                      <input
-                        className="field"
-                        inputMode="decimal"
-                        placeholder={t('customUnits', language)}
-                        value={volumeUnits[worker.id] || ''}
-                        onChange={(e) => setVolumeUnits((current) => ({ ...current, [worker.id]: e.target.value }))}
-                      />
-                      <button type="button" className="secondary-button min-w-[110px]" onClick={() => void saveVolumeUnits(worker.id)}>
-                        {t('save', language)}
+                    <div className="mt-4 rounded-2xl border border-[var(--border)] px-4 py-4">
+                      <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('attendance', language)}</p>
+                      <p className="mt-2 text-sm text-[var(--text-soft)]">{copy.volumeHint}</p>
+                      <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+                        <input
+                          className="field"
+                          inputMode="decimal"
+                          placeholder={t('customUnits', language)}
+                          value={volumeUnits[worker.id] || ''}
+                          onChange={(e) => setVolumeUnits((current) => ({ ...current, [worker.id]: e.target.value }))}
+                        />
+                        <button type="button" className="primary-button min-w-[110px]" onClick={() => void saveVolumeUnits(worker.id)}>
+                          {t('save', language)}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-2xl border border-[var(--border)] px-4 py-4">
+                      <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('attendance', language)}</p>
+                      <p className="mt-2 text-sm text-[var(--text-soft)]">{attendanceMarked ? copy.attendanceSaved : copy.attendanceMissing}</p>
+                      <button
+                        type="button"
+                        className={`${attendanceMarked ? 'secondary-button' : 'primary-button'} mt-3 w-full`}
+                        onClick={() => void markTodayPresent(worker.id)}
+                      >
+                        {attendanceMarked ? copy.todayMarked : copy.todayPresent}
                       </button>
                     </div>
-                  ) : null}
+                  )}
 
                   <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
                     <input

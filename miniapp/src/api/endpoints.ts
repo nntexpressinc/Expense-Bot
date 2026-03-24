@@ -200,13 +200,14 @@ export interface WorkerSummary {
   full_name: string
   payment_type: 'daily' | 'monthly' | 'volume'
   currency: string
-  gross_amount: number
-  advances_amount: number
+  base_amount: number
+  advance_amount: number
   paid_amount: number
   payable_amount: number
-  attendance_days?: number
-  half_days?: number
-  units?: number
+  quantity?: number
+  attendance_count?: number
+  advances_count?: number
+  payments_count?: number
   status: 'unpaid' | 'partial' | 'paid'
 }
 
