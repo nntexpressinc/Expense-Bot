@@ -14,6 +14,7 @@ from bot.services.notifications import notify_admins_about_transaction, notify_t
 from config.admin import check_user_admin_status, is_user_admin
 from config.constants import DEFAULT_EXCHANGE_RATE
 from config.settings import settings
+from database.category_labels import present_category_name
 from database.audit import write_audit_log
 from database.finance import (
     MONEY_QUANT,
@@ -371,7 +372,7 @@ async def update_exchange_rate(
         await db.refresh(record)
         return record
 
-async def get_categories(tx_type: str, user_id: int | None = None) -> list[dict[str, Any]]:
+async def get_categories(tx_type: str, user_id: int | None = None, lang: str = "uz") -> list[dict[str, Any]]:
     async with _session() as db:
         await _ensure_system_categories(db)
 
@@ -387,13 +388,17 @@ async def get_categories(tx_type: str, user_id: int | None = None) -> list[dict[
                 query.order_by(Category.is_system.desc(), Category.name.asc(), Category.id.asc())
             )
         ).scalars().all()
+        categories = sorted(
+            categories,
+            key=lambda category: present_category_name(category.name, lang, getattr(category, 'is_system', True)).lower(),
+        )
 
         return [
             {
                 "id": category.id,
-                "name": category.name,
+                "name": present_category_name(category.name, lang, getattr(category, 'is_system', True)),
                 "icon": category.icon or "",
-                "is_system": category.is_system,
+                "is_system": getattr(category, 'is_system', True),
             }
             for category in categories
         ]

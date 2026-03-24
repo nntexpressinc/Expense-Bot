@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routers.auth import get_current_user
 from bot.services.notifications import notify_transfer_participants
+from database.category_labels import present_category_name
 from database.finance import convert_amount, get_user_balance_summary, normalize_currency
 from database.group_context import get_active_group_id, group_user_ids_query
 from database.models import (
@@ -252,7 +253,7 @@ async def _serialize_transfer_for_user(
                 'currency': display_currency,
                 'category': {
                     'id': category.id if category else None,
-                    'name': category.name if category else _t(lang, "Noma'lum", 'Неизвестно', 'Unknown'),
+                    'name': present_category_name(category.name, lang, getattr(category, 'is_system', True)) if category else _t(lang, "Noma'lum", 'Неизвестно', 'Unknown'),
                     'icon': category.icon if category else '💰',
                 },
                 'description': exp.description,
@@ -482,7 +483,7 @@ async def get_sent_transfer_group_details(
                 'currency': display_currency,
                 'category': {
                     'id': category.id if category else None,
-                    'name': category.name if category else _t(lang, "Noma'lum", 'Неизвестно', 'Unknown'),
+                    'name': present_category_name(category.name, lang, getattr(category, 'is_system', True)) if category else _t(lang, "Noma'lum", 'Неизвестно', 'Unknown'),
                     'icon': category.icon if category else '💰',
                 },
                 'description': expense.description,

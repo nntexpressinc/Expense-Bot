@@ -23,7 +23,26 @@ const monthBounds = () => {
   return { start: toIso(start), end: toIso(end) }
 }
 
-type DailyStatus = 'present' | 'half_day' | 'absent'
+const workerCopy = {
+  uz: {
+    todayPresent: '? Bugun keldi',
+    todayMarked: '? Bugun belgilandi',
+    payFromBalance: "To'lov asosiy balansdan yechiladi",
+    optionalRole: 'Vazifa (ixtiyoriy)',
+  },
+  ru: {
+    todayPresent: '? Отметить сегодня',
+    todayMarked: '? На сегодня отмечено',
+    payFromBalance: 'Выплата спишется с основного баланса',
+    optionalRole: 'Роль (необязательно)',
+  },
+  en: {
+    todayPresent: '? Mark present today',
+    todayMarked: '? Marked for today',
+    payFromBalance: 'Payment is deducted from main balance',
+    optionalRole: 'Role (optional)',
+  },
+} as const
 
 export default function Workers() {
   const queryClient = useQueryClient()
@@ -33,12 +52,12 @@ export default function Workers() {
   const [roleName, setRoleName] = useState('')
   const [paymentType, setPaymentType] = useState<'daily' | 'monthly' | 'volume'>('daily')
   const [rate, setRate] = useState('')
-  const [phone, setPhone] = useState('')
   const [volumeUnits, setVolumeUnits] = useState<Record<string, string>>({})
   const [advanceAmount, setAdvanceAmount] = useState<Record<string, string>>({})
   const [paymentAmount, setPaymentAmount] = useState<Record<string, string>>({})
 
   const month = useMemo(monthBounds, [])
+  const copy = workerCopy[language]
 
   const workersQuery = useQuery({
     queryKey: ['workers'],
@@ -69,7 +88,6 @@ export default function Workers() {
       setFullName('')
       setRoleName('')
       setRate('')
-      setPhone('')
       setPaymentType('daily')
       haptic.success()
       await showAlert(t('successSaved', language))
@@ -78,15 +96,13 @@ export default function Workers() {
   })
 
   const attendanceMutation = useMutation({
-    mutationFn: ({
-      workerId,
-      status,
-      units,
-    }: {
-      workerId: string
-      status: 'present' | 'absent' | 'half_day' | 'custom'
-      units: number
-    }) => createAttendance(workerId, { entry_date: new Date().toISOString().slice(0, 10), status, units, comment: undefined }),
+    mutationFn: ({ workerId, status, units }: { workerId: string; status: 'present' | 'custom'; units: number }) =>
+      createAttendance(workerId, {
+        entry_date: new Date().toISOString().slice(0, 10),
+        status,
+        units,
+        comment: undefined,
+      }),
     onSuccess: async () => {
       await refresh()
       haptic.success()
@@ -147,7 +163,6 @@ export default function Workers() {
 
     await createWorkerMutation.mutateAsync({
       full_name: fullName.trim(),
-      phone: phone.trim() || undefined,
       role_name: roleName.trim() || undefined,
       payment_type: paymentType,
       rate: numericRate,
@@ -156,8 +171,8 @@ export default function Workers() {
     })
   }
 
-  const markDailyAttendance = async (workerId: string, status: DailyStatus) => {
-    await attendanceMutation.mutateAsync({ workerId, status, units: 0 })
+  const markTodayPresent = async (workerId: string) => {
+    await attendanceMutation.mutateAsync({ workerId, status: 'present', units: 1 })
   }
 
   const saveVolumeUnits = async (workerId: string) => {
@@ -180,8 +195,8 @@ export default function Workers() {
     setAdvanceAmount((current) => ({ ...current, [workerId]: '' }))
   }
 
-  const savePayment = async (workerId: string) => {
-    const amountValue = Number(paymentAmount[workerId] || 0)
+  const savePayment = async (workerId: string, payableAmount: number) => {
+    const amountValue = Number(paymentAmount[workerId] || payableAmount || 0)
     if (!amountValue || amountValue <= 0) {
       await showAlert(t('requestFailed', language))
       return
@@ -212,14 +227,13 @@ export default function Workers() {
         <SectionTitle title={t('addWorker', language)} />
         <form className="space-y-3" onSubmit={submitWorker}>
           <input className="field" placeholder={t('fullName', language)} value={fullName} onChange={(e) => setFullName(e.target.value)} />
-          <input className="field" placeholder={t('roleName', language)} value={roleName} onChange={(e) => setRoleName(e.target.value)} />
           <select className="field" value={paymentType} onChange={(e) => setPaymentType(e.target.value as 'daily' | 'monthly' | 'volume')}>
             <option value="daily">{t('daily', language)}</option>
             <option value="monthly">{t('monthly', language)}</option>
             <option value="volume">{t('volume', language)}</option>
           </select>
           <input className="field" inputMode="decimal" placeholder={t('amount', language)} value={rate} onChange={(e) => setRate(e.target.value)} />
-          <input className="field" placeholder={t('phone', language)} value={phone} onChange={(e) => setPhone(e.target.value)} />
+          <input className="field" placeholder={copy.optionalRole} value={roleName} onChange={(e) => setRoleName(e.target.value)} />
           <button type="submit" className="primary-button w-full" disabled={createWorkerMutation.isPending}>
             {createWorkerMutation.isPending ? t('loading', language) : t('save', language)}
           </button>
@@ -232,13 +246,19 @@ export default function Workers() {
           <div className="space-y-3">
             {workersQuery.data.map((worker) => {
               const summary = workerSummaryMap.get(worker.id)
+              const payableAmount = Number(summary?.payable_amount || 0)
+              const dailyMarked = Boolean(worker.today_status)
+              const payButtonLabel = payableAmount > 0
+                ? `${t('pay', language)} ${formatMoney(payableAmount, summary?.currency || worker.currency, locale)}`
+                : t('pay', language)
+
               return (
                 <div key={worker.id} className="surface-card-muted px-4 py-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="text-base font-semibold text-[var(--text)]">{worker.full_name}</p>
                       <p className="mt-1 text-sm text-[var(--text-soft)]">
-                        {worker.role_name || '-'} - {t(worker.payment_type, language)}
+                        {t(worker.payment_type, language)}{worker.role_name ? ` - ${worker.role_name}` : ''}
                       </p>
                       <p className="mt-1 text-sm text-[var(--text-soft)]">
                         {formatMoney(Number(worker.rate), worker.currency, locale)}
@@ -252,69 +272,62 @@ export default function Workers() {
                     </div>
                   </div>
 
-                  {summary ? (
-                    <div className="mt-3 space-y-1 text-sm text-[var(--text-soft)]">
-                      <p>{t('advances', language)}: <span className="font-semibold text-[var(--text)]">{formatMoney(summary.advances_amount, summary.currency, locale)}</span></p>
-                      <p>{t('payments', language)}: <span className="font-semibold text-[var(--text)]">{formatMoney(summary.paid_amount, summary.currency, locale)}</span></p>
+                  {worker.payment_type === 'daily' ? (
+                    <button
+                      type="button"
+                      className={`${dailyMarked ? 'secondary-button' : 'primary-button'} mt-4 w-full`}
+                      onClick={() => void markTodayPresent(worker.id)}
+                    >
+                      {dailyMarked ? copy.todayMarked : copy.todayPresent}
+                    </button>
+                  ) : null}
+
+                  {worker.payment_type === 'volume' ? (
+                    <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
+                      <input
+                        className="field"
+                        inputMode="decimal"
+                        placeholder={t('customUnits', language)}
+                        value={volumeUnits[worker.id] || ''}
+                        onChange={(e) => setVolumeUnits((current) => ({ ...current, [worker.id]: e.target.value }))}
+                      />
+                      <button type="button" className="secondary-button min-w-[110px]" onClick={() => void saveVolumeUnits(worker.id)}>
+                        {t('save', language)}
+                      </button>
                     </div>
                   ) : null}
 
-                  <div className="mt-4 space-y-3">
-                    {worker.payment_type === 'daily' ? (
-                      <div className="grid grid-cols-3 gap-2">
-                        <button type="button" className="secondary-button w-full" onClick={() => void markDailyAttendance(worker.id, 'present')}>
-                          {t('present', language)}
-                        </button>
-                        <button type="button" className="secondary-button w-full" onClick={() => void markDailyAttendance(worker.id, 'half_day')}>
-                          {t('halfDay', language)}
-                        </button>
-                        <button type="button" className="secondary-button w-full" onClick={() => void markDailyAttendance(worker.id, 'absent')}>
-                          {t('absent', language)}
-                        </button>
-                      </div>
-                    ) : null}
-
-                    {worker.payment_type === 'volume' ? (
-                      <div className="grid grid-cols-[1fr_auto] gap-2">
-                        <input
-                          className="field"
-                          inputMode="decimal"
-                          placeholder={t('customUnits', language)}
-                          value={volumeUnits[worker.id] || ''}
-                          onChange={(e) => setVolumeUnits((current) => ({ ...current, [worker.id]: e.target.value }))}
-                        />
-                        <button type="button" className="secondary-button min-w-[110px]" onClick={() => void saveVolumeUnits(worker.id)}>
-                          {t('save', language)}
-                        </button>
-                      </div>
-                    ) : null}
-
-                    <div className="grid grid-cols-[1fr_auto] gap-2">
-                      <input
-                        className="field"
-                        inputMode="decimal"
-                        placeholder={t('advances', language)}
-                        value={advanceAmount[worker.id] || ''}
-                        onChange={(e) => setAdvanceAmount((current) => ({ ...current, [worker.id]: e.target.value }))}
-                      />
-                      <button type="button" className="secondary-button min-w-[110px]" onClick={() => void saveAdvance(worker.id)}>
-                        {t('recordAdvance', language)}
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-[1fr_auto] gap-2">
-                      <input
-                        className="field"
-                        inputMode="decimal"
-                        placeholder={t('payments', language)}
-                        value={paymentAmount[worker.id] || ''}
-                        onChange={(e) => setPaymentAmount((current) => ({ ...current, [worker.id]: e.target.value }))}
-                      />
-                      <button type="button" className="primary-button min-w-[110px]" onClick={() => void savePayment(worker.id)}>
-                        {t('recordPayment', language)}
-                      </button>
-                    </div>
+                  <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
+                    <input
+                      className="field"
+                      inputMode="decimal"
+                      placeholder={t('advances', language)}
+                      value={advanceAmount[worker.id] || ''}
+                      onChange={(e) => setAdvanceAmount((current) => ({ ...current, [worker.id]: e.target.value }))}
+                    />
+                    <button type="button" className="secondary-button min-w-[110px]" onClick={() => void saveAdvance(worker.id)}>
+                      {t('recordAdvance', language)}
+                    </button>
                   </div>
+
+                  <div className="mt-3 grid grid-cols-[1fr_auto] gap-2">
+                    <input
+                      className="field"
+                      inputMode="decimal"
+                      placeholder={payableAmount > 0 ? `${payableAmount}` : t('amount', language)}
+                      value={paymentAmount[worker.id] || ''}
+                      onChange={(e) => setPaymentAmount((current) => ({ ...current, [worker.id]: e.target.value }))}
+                    />
+                    <button
+                      type="button"
+                      className="primary-button min-w-[150px]"
+                      onClick={() => void savePayment(worker.id, payableAmount)}
+                      disabled={payableAmount <= 0}
+                    >
+                      {payButtonLabel}
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-[var(--text-muted)]">{copy.payFromBalance}</p>
                 </div>
               )
             })}
@@ -326,5 +339,3 @@ export default function Workers() {
     </Page>
   )
 }
-
-

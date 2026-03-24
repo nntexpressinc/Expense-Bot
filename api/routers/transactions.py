@@ -9,6 +9,7 @@ from sqlalchemy import and_, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routers.auth import get_current_user
+from database.category_labels import present_category_name
 from database.audit import write_audit_log
 from database.finance import (
     allocate_expense_to_transfers,
@@ -153,7 +154,7 @@ async def _serialize_transaction(db: AsyncSession, transaction: Transaction, lan
         'main_used_amount': funding_meta['main_used_amount'],
         'category': {
             'id': category.id if category else None,
-            'name': category.name if category else _t(lang, "Noma'lum", 'Неизвестно', 'Unknown'),
+            'name': present_category_name(category.name, lang, getattr(category, 'is_system', True)) if category else _t(lang, "Noma'lum", 'Неизвестно', 'Unknown'),
             'icon': category.icon if category else '💰',
         },
         'description': transaction.description,

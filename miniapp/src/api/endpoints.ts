@@ -191,6 +191,8 @@ export interface Worker {
   start_date: string
   is_active: boolean
   notes?: string
+  today_status?: 'present' | 'absent' | 'half_day' | 'custom' | null
+  today_units?: number
 }
 
 export interface WorkerSummary {

@@ -61,7 +61,7 @@ async def process_income_amount(message: Message, state: FSMContext):
         return
 
     await state.update_data(amount=str(amount))
-    categories = await get_categories('income')
+    categories = await get_categories('income', lang=(user.language_code or 'uz').split('-')[0].lower())
 
     await state.set_state(IncomeStates.waiting_for_category)
     await message.answer(

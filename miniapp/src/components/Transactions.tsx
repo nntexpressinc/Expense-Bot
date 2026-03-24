@@ -42,6 +42,12 @@ const transactionPrefix = (transaction: { type: string; debt_kind?: 'cash_loan' 
   return '+'
 }
 
+const uiCopy = {
+  uz: { selectCategory: 'Kategoriyani tanlang', all: 'Hammasi' },
+  ru: { selectCategory: 'Выберите категорию', all: 'Все' },
+  en: { selectCategory: 'Select category', all: 'All' },
+} as const
+
 export default function Transactions() {
   const queryClient = useQueryClient()
   const { language, locale, settings } = useAppSettings()
@@ -53,6 +59,7 @@ export default function Transactions() {
   const [fundingSource, setFundingSource] = useState<'main' | 'debt'>('main')
   const [debtId, setDebtId] = useState<string>('')
   const [filter, setFilter] = useState<'all' | 'income' | 'expense'>('all')
+  const copy = uiCopy[language]
 
   const transactionsQuery = useQuery({
     queryKey: ['transactions', filter],
@@ -168,7 +175,7 @@ export default function Transactions() {
         <form className="space-y-3" onSubmit={submit}>
           <input className="field" inputMode="decimal" placeholder={t('amount', language)} value={amount} onChange={(e) => setAmount(e.target.value)} />
           <select className="field" value={categoryId} onChange={(e) => setCategoryId(e.target.value ? Number(e.target.value) : '')}>
-            <option value="">{t('description', language)} / category</option>
+            <option value="">{copy.selectCategory}</option>
             {(categoriesQuery.data || []).map((category) => (
               <option key={category.id} value={category.id}>
                 {category.icon} {category.name}
@@ -224,7 +231,7 @@ export default function Transactions() {
       <Card>
         <SectionTitle title={t('recentOperations', language)} />
         <div className="mb-3 flex flex-wrap gap-2">
-          <button type="button" onClick={() => setFilter('all')} className={`pill-button ${filter === 'all' ? 'active' : ''}`}>All</button>
+          <button type="button" onClick={() => setFilter('all')} className={`pill-button ${filter === 'all' ? 'active' : ''}`}>{copy.all}</button>
           <button type="button" onClick={() => setFilter('income')} className={`pill-button ${filter === 'income' ? 'active' : ''}`}>{t('income', language)}</button>
           <button type="button" onClick={() => setFilter('expense')} className={`pill-button ${filter === 'expense' ? 'active' : ''}`}>{t('expense', language)}</button>
         </div>

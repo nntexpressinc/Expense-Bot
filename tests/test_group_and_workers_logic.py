@@ -3,7 +3,10 @@ from decimal import Decimal
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
+from api.routers.workers import WorkerMoneyRequest, _create_worker_money_record
+from database.category_labels import present_category_name
 from database.finance import apply_debt_repayment, calculate_available_debt_source_native, normalize_debt_kind
 from database.group_context import normalize_group_role, normalize_lang, normalize_theme
 from database.workers import attendance_units
@@ -73,6 +76,13 @@ def test_worker_period_inputs_are_plain_dates():
     assert isinstance(today, date)
 
 
+def test_system_categories_are_localized_by_language():
+    assert present_category_name("Food", "uz", True) == "Oziq-ovqat"
+    assert present_category_name("Еда и продукты", "en", True) == "Food"
+    assert present_category_name("Transport", "ru", True) == "Транспорт"
+    assert present_category_name("Custom farm", "ru", False) == "Custom farm"
+
+
 @pytest.mark.asyncio
 async def test_apply_debt_repayment_rejects_amount_above_remaining():
     class DummyDb:
@@ -102,4 +112,32 @@ async def test_apply_debt_repayment_rejects_amount_above_remaining():
             amount=Decimal("50"),
             currency="USD",
             note=None,
+        )
+
+
+@pytest.mark.asyncio
+async def test_worker_payment_rejects_amount_above_payable(monkeypatch):
+    class DummyDb:
+        def add(self, _item):
+            return None
+
+        async def commit(self):
+            return None
+
+    async def fake_main_balance(*_args, **_kwargs):
+        return Decimal("500")
+
+    async def fake_worker_summary(*_args, **_kwargs):
+        return {"payable_amount": 40}
+
+    monkeypatch.setattr("api.routers.workers.get_spendable_main_balance", fake_main_balance)
+    monkeypatch.setattr("api.routers.workers.calculate_worker_period_summary", fake_worker_summary)
+
+    with pytest.raises(HTTPException, match="Maximum|Максимум"):
+        await _create_worker_money_record(
+            db=DummyDb(),
+            current_user=SimpleNamespace(id=1, language_code="en", default_currency="USD"),
+            worker=SimpleNamespace(id="worker-1", group_id=1, full_name="Ali"),
+            payload=WorkerMoneyRequest(amount=Decimal("50"), currency="USD", payment_date=date(2026, 3, 24), note=None),
+            record_type="payment",
         )

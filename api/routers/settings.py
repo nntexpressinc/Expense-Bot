@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routers.auth import get_current_user
 from config.admin import check_user_admin_status
+from database.category_labels import present_category_name
 from database.finance import get_exchange_rate, get_user_balance_summary, normalize_currency
 from database.group_context import (
     get_active_group,
@@ -118,18 +119,22 @@ async def get_categories(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    lang = normalize_lang(current_user.language_code)
     query = select(Category).where((Category.is_system.is_(True)) | (Category.user_id == current_user.id))
 
     if type:
         query = query.where(Category.type == type)
 
-    query = query.order_by(Category.name)
     categories = (await db.execute(query)).scalars().all()
+    categories = sorted(
+        categories,
+        key=lambda cat: present_category_name(cat.name, lang, cat.is_system).lower(),
+    )
 
     return [
         {
             "id": cat.id,
-            "name": cat.name,
+            "name": present_category_name(cat.name, lang, cat.is_system),
             "type": cat.type.value if hasattr(cat.type, "value") else str(cat.type),
             "icon": cat.icon,
             "is_system": cat.is_system,

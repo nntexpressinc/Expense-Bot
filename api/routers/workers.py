@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import List, Optional
 from uuid import UUID
@@ -68,6 +68,15 @@ class WorkerResponse(BaseModel):
     start_date: str
     is_active: bool
     notes: Optional[str]
+    today_status: Optional[str] = None
+    today_units: float = 0.0
+
+
+def _month_range(target_date: date) -> tuple[date, date]:
+    start = target_date.replace(day=1)
+    next_month = (start.replace(day=28) + timedelta(days=4)).replace(day=1)
+    end = next_month - timedelta(days=1)
+    return start, end
 
 
 @router.get("/", response_model=List[WorkerResponse])
@@ -81,6 +90,19 @@ async def list_workers(
     if not include_inactive:
         query = query.where(Worker.is_active.is_(True))
     workers = (await db.execute(query.order_by(Worker.full_name.asc()))).scalars().all()
+    today = date.today()
+    attendance_rows = []
+    if workers:
+        attendance_rows = (
+            await db.execute(
+                select(AttendanceEntry).where(
+                    AttendanceEntry.group_id == group_id,
+                    AttendanceEntry.entry_date == today,
+                    AttendanceEntry.worker_id.in_([worker.id for worker in workers]),
+                )
+            )
+        ).scalars().all()
+    today_map = {entry.worker_id: entry for entry in attendance_rows}
     return [
         {
             "id": str(worker.id),
@@ -93,6 +115,8 @@ async def list_workers(
             "start_date": worker.start_date.isoformat(),
             "is_active": worker.is_active,
             "notes": worker.notes,
+            "today_status": today_map.get(worker.id).status if today_map.get(worker.id) else None,
+            "today_units": float(today_map.get(worker.id).units or 0) if today_map.get(worker.id) else 0.0,
         }
         for worker in workers
     ]
@@ -225,6 +249,37 @@ async def _create_worker_money_record(
                 f"Insufficient main balance. Available: {main_balance} {currency}",
             ),
         )
+
+    if record_type == "payment":
+        start_date, end_date = _month_range(payload.payment_date)
+        payable_summary = await calculate_worker_period_summary(
+            db,
+            worker,
+            start_date,
+            end_date,
+            currency,
+        )
+        payable_amount = Decimal(str(payable_summary["payable_amount"]))
+        if payable_amount <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail=_t(
+                    lang,
+                    "Bu ishchi uchun to'lanadigan summa yo'q",
+                    "Для этого сотрудника нет суммы к выплате",
+                    "There is no payable amount for this worker",
+                ),
+            )
+        if payload.amount > payable_amount:
+            raise HTTPException(
+                status_code=400,
+                detail=_t(
+                    lang,
+                    f"To'lov summasi oshib ketdi. Maksimal: {payable_amount} {currency}",
+                    f"Сумма выплаты слишком большая. Максимум: {payable_amount} {currency}",
+                    f"Payment amount is too high. Maximum: {payable_amount} {currency}",
+                ),
+            )
 
     duplicate_payment = (
         await db.execute(

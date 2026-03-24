@@ -51,7 +51,7 @@ def _expense_debt_keyboard(debts: list[dict], lang: str) -> InlineKeyboardMarkup
 
 
 async def _ask_category(message: Message, state: FSMContext, lang: str):
-    categories = await get_categories('expense')
+    categories = await get_categories('expense', lang=lang)
     await state.set_state(ExpenseStates.waiting_for_category)
     prompts = {
         'uz': 'Kategoriyani tanlang:',

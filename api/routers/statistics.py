@@ -10,6 +10,7 @@ from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routers.auth import get_current_user
+from database.category_labels import present_category_name
 from database.finance import convert_amount, normalize_currency
 from database.group_context import get_active_group_id
 from database.models import Category, Transaction, TransactionType, User
@@ -147,7 +148,7 @@ async def get_statistics(
             top_categories.append(
                 {
                     'id': cat_id,
-                    'name': cat.name if cat else 'Unknown',
+                    'name': present_category_name(cat.name, lang, getattr(cat, 'is_system', True)) if cat else 'Unknown',
                     'icon': cat.icon if cat else '$',
                     'amount': float(amount_value),
                     'percent': round(percent, 1),
