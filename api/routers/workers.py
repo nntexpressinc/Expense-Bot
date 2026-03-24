@@ -5,7 +5,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, select
+from sqlalchemy import and_, desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routers.auth import get_current_user
@@ -72,6 +72,16 @@ class WorkerResponse(BaseModel):
     today_units: float = 0.0
 
 
+class AttendanceListItem(BaseModel):
+    id: str
+    worker_id: str
+    worker_name: str
+    entry_date: str
+    status: str
+    units: float
+    comment: Optional[str] = None
+
+
 def _month_range(target_date: date) -> tuple[date, date]:
     start = target_date.replace(day=1)
     next_month = (start.replace(day=28) + timedelta(days=4)).replace(day=1)
@@ -119,6 +129,51 @@ async def list_workers(
             "today_units": float(today_map.get(worker.id).units or 0) if today_map.get(worker.id) else 0.0,
         }
         for worker in workers
+    ]
+
+
+@router.get("/attendance", response_model=List[AttendanceListItem])
+async def list_attendance_entries(
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+    limit: int = Query(50, ge=1, le=300),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    lang = _lang(current_user.language_code)
+    group_id = await get_active_group_id(db, current_user)
+    if not await is_group_admin(db, current_user, group_id):
+        raise HTTPException(status_code=403, detail=_t(lang, "Ruxsat yo'q", "Доступ запрещён", "Access denied"))
+
+    today = date.today()
+    resolved_start = start_date or today.replace(day=1)
+    resolved_end = end_date or today
+
+    rows = (
+        await db.execute(
+            select(AttendanceEntry, Worker)
+            .join(Worker, Worker.id == AttendanceEntry.worker_id)
+            .where(
+                AttendanceEntry.group_id == group_id,
+                AttendanceEntry.entry_date >= resolved_start,
+                AttendanceEntry.entry_date <= resolved_end,
+            )
+            .order_by(desc(AttendanceEntry.entry_date), Worker.full_name.asc())
+            .limit(limit)
+        )
+    ).all()
+
+    return [
+        {
+            "id": str(entry.id),
+            "worker_id": str(worker.id),
+            "worker_name": worker.full_name,
+            "entry_date": entry.entry_date.isoformat(),
+            "status": entry.status,
+            "units": float(entry.units or 0),
+            "comment": entry.comment,
+        }
+        for entry, worker in rows
     ]
 
 

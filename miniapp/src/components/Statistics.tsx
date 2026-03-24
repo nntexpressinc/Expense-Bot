@@ -20,11 +20,11 @@ export default function Statistics() {
 
   const handleExport = async () => {
     try {
-      const blob = await exportStatisticsExcel(period)
+      const { blob, filename } = await exportStatisticsExcel(period)
       const url = window.URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `statistics-${period}.xlsx`
+      link.download = filename
       link.click()
       window.URL.revokeObjectURL(url)
       haptic.success()

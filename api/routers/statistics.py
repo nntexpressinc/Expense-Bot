@@ -14,7 +14,7 @@ from database.category_labels import present_category_name
 from database.finance import convert_amount, normalize_currency
 from database.group_context import get_active_group_id
 from database.models import Category, Transaction, TransactionType, User
-from database.reporting import generate_excel_report
+from database.reporting import generate_report_download
 from database.session import get_db
 
 router = APIRouter()
@@ -76,10 +76,10 @@ async def export_statistics_excel(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    content, filename = await generate_excel_report(db, current_user, period, filename_prefix='statistics')
+    content, filename, media_type = await generate_report_download(db, current_user, period, filename_prefix='statistics')
     return StreamingResponse(
         BytesIO(content),
-        media_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        media_type=media_type,
         headers={'Content-Disposition': f'attachment; filename="{filename}"'},
     )
 

@@ -219,6 +219,36 @@ export interface GroupMember {
   role: 'admin' | 'member'
 }
 
+export interface AttendanceListItem {
+  id: string
+  worker_id: string
+  worker_name: string
+  entry_date: string
+  status: 'present' | 'absent' | 'half_day' | 'custom'
+  units: number
+  comment?: string
+}
+
+export interface GroupUserOverviewItem {
+  user_id: number
+  display_name: string
+  username?: string
+  role: 'admin' | 'member'
+  total_balance: number
+  debt_balance: number
+  outstanding_debt_balance: number
+  debt_count: number
+  active_debt_count: number
+  recent_transactions: Array<{
+    id: string
+    type: string
+    amount: number
+    currency: string
+    description: string
+    date: string
+  }>
+}
+
 export const getUserSettings = () => apiClient.get<UserSettings>('/settings/user').then((res) => res.data)
 export const updateLanguage = (language: string) =>
   apiClient.patch<UserSettings>('/settings/user/language', { language }).then((res) => res.data)
@@ -278,8 +308,15 @@ export const getTransferDetails = (id: string) =>
 
 export const getStatistics = (period?: 'day' | 'week' | 'month' | 'year') =>
   apiClient.get<Statistics>('/statistics/', { params: { period } }).then((res) => res.data)
-export const exportStatisticsExcel = (period?: 'day' | 'week' | 'month' | 'year') =>
-  apiClient.get('/statistics/export/excel', { params: { period }, responseType: 'blob' }).then((res) => res.data as Blob)
+export const exportStatisticsExcel = async (period?: 'day' | 'week' | 'month' | 'year') => {
+  const response = await apiClient.get('/statistics/export/excel', { params: { period }, responseType: 'blob' })
+  const disposition = response.headers['content-disposition'] || ''
+  const filenameMatch = disposition.match(/filename=\"?([^\";]+)\"?/)
+  return {
+    blob: response.data as Blob,
+    filename: filenameMatch?.[1] || `statistics-${period || 'month'}.xlsx`,
+  }
+}
 
 export const listDebts = () => apiClient.get<Debt[]>('/debts/').then((res) => res.data)
 export const createDebt = (data: {
@@ -301,6 +338,8 @@ export const renameGroup = (groupId: number, name: string) =>
   apiClient.patch(`/groups/${groupId}`, { name }).then((res) => res.data)
 export const getGroupMembers = (groupId: number) =>
   apiClient.get<GroupMember[]>(`/groups/${groupId}/members`).then((res) => res.data)
+export const getGroupUserOverview = (groupId: number) =>
+  apiClient.get<GroupUserOverviewItem[]>(`/groups/${groupId}/overview`).then((res) => res.data)
 export const upsertGroupMember = (groupId: number, user_id: number, role: 'admin' | 'member') =>
   apiClient.post(`/groups/${groupId}/members`, { user_id, role }).then((res) => res.data)
 export const removeGroupMember = (groupId: number, userId: number) =>
@@ -334,3 +373,5 @@ export const getWorkerSummary = (workerId: string, start_date: string, end_date:
   apiClient.get<WorkerSummary>(`/workers/${workerId}/summary`, { params: { start_date, end_date } }).then((res) => res.data)
 export const getWorkersSummary = (params: { start_date: string; end_date: string; include_inactive?: boolean }) =>
   apiClient.get<{ workers: WorkerSummary[]; totals: Record<string, number | string> }>('/workers/summary', { params }).then((res) => res.data)
+export const listAttendanceEntries = (params?: { start_date?: string; end_date?: string; limit?: number }) =>
+  apiClient.get<AttendanceListItem[]>('/workers/attendance', { params }).then((res) => res.data)

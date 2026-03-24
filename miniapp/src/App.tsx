@@ -14,11 +14,10 @@ import BottomNav from '@/components/shared/BottomNav'
 import { LoadingState } from '@/components/shared/States'
 
 function App() {
-  const { webApp, user } = useTelegram()
+  const { webApp, user, authReady } = useTelegram()
   const [isReady, setIsReady] = useState(false)
   const allowDevPreview = import.meta.env.DEV && !webApp
-  const hasTelegramInitData = Boolean(webApp?.initData)
-  const { settings, theme, isLoading } = useAppSettings(allowDevPreview || hasTelegramInitData)
+  const { settings, theme, isLoading } = useAppSettings(allowDevPreview || authReady)
   const canManageAdmin = Boolean(settings?.is_group_admin || settings?.is_admin)
 
   useEffect(() => {
@@ -32,7 +31,7 @@ function App() {
     setIsReady(true)
   }, [theme, webApp])
 
-  if (!isReady || isLoading || (!user && !allowDevPreview)) {
+  if (!isReady || (webApp && !authReady && !allowDevPreview) || isLoading || (!user && !allowDevPreview)) {
     return (
       <div className="app-shell">
         <div className="app-content">

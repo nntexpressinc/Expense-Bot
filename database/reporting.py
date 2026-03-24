@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import zipfile
 from datetime import datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
@@ -20,6 +21,7 @@ from database.models import (
     Debt,
     DebtRepayment,
     DebtUsage,
+    Group,
     Transaction,
     TransactionType,
     Transfer,
@@ -169,7 +171,39 @@ async def collect_excel_report_payload(db: AsyncSession, user: User, period: str
     group_id = await get_active_group_id(db, user)
     group = await get_active_group(db, user)
     admin_mode = await is_group_admin(db, user, group_id)
+    return await collect_excel_report_payload_for_group(
+        db,
+        user,
+        period,
+        group_id=group_id,
+        include_admin_sheets=admin_mode,
+        group=group,
+        now=now,
+        start_date=start_date,
+        period_type=period_type,
+        currency=currency,
+    )
 
+
+async def collect_excel_report_payload_for_group(
+    db: AsyncSession,
+    user: User,
+    period: str,
+    *,
+    group_id: int,
+    include_admin_sheets: bool,
+    group=None,
+    now: datetime | None = None,
+    start_date: datetime | None = None,
+    period_type: str | None = None,
+    currency: str | None = None,
+) -> dict[str, Any]:
+    now = now or datetime.now()
+    start_date, period_type = (start_date, period_type) if start_date and period_type else _period_start(period)
+    currency = currency or normalize_currency(user.default_currency, "UZS")
+    if group is None:
+        group = (await db.execute(select(Group).where(Group.id == group_id))).scalar_one()
+    admin_mode = include_admin_sheets
     tx_rows = (
         await db.execute(
             select(
@@ -593,8 +627,74 @@ async def generate_excel_report(
     period: str,
     *,
     filename_prefix: str = "report",
+    include_admin_sheets: bool | None = None,
+    group_id_override: int | None = None,
 ) -> tuple[bytes, str]:
-    payload = await collect_excel_report_payload(db, user, period)
+    if include_admin_sheets is None:
+        payload = await collect_excel_report_payload(db, user, period)
+    else:
+        group_id = int(group_id_override or await get_active_group_id(db, user))
+        group = (await db.execute(select(Group).where(Group.id == group_id))).scalar_one()
+        payload = await collect_excel_report_payload_for_group(
+            db,
+            user,
+            period,
+            group_id=group_id,
+            include_admin_sheets=include_admin_sheets,
+            group=group,
+            currency=normalize_currency(user.default_currency, "UZS"),
+        )
     content = build_excel_workbook(payload)
     filename = f"{filename_prefix}_{_safe_filename_part(payload['group_name'])}_{period}_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
     return content, filename
+
+
+async def generate_report_download(
+    db: AsyncSession,
+    user: User,
+    period: str,
+    *,
+    filename_prefix: str = "report",
+) -> tuple[bytes, str, str]:
+    group_id = await get_active_group_id(db, user)
+    admin_mode = await is_group_admin(db, user, group_id)
+    if not admin_mode:
+        content, filename = await generate_excel_report(db, user, period, filename_prefix=filename_prefix)
+        return content, filename, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+    overview_content, overview_filename = await generate_excel_report(
+        db,
+        user,
+        period,
+        filename_prefix=f"{filename_prefix}_group",
+        include_admin_sheets=True,
+    )
+
+    members = (
+        await db.execute(
+            select(User)
+            .join(UserGroup, UserGroup.user_id == User.id)
+            .where(UserGroup.group_id == group_id)
+            .order_by(User.first_name.asc(), User.id.asc())
+        )
+    ).scalars().all()
+
+    archive_stream = BytesIO()
+    with zipfile.ZipFile(archive_stream, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr(overview_filename, overview_content)
+        for member in members:
+            member_name = _safe_filename_part(_display_name(member))
+            member_content, member_filename = await generate_excel_report(
+                db,
+                member,
+                period,
+                filename_prefix=f"{filename_prefix}_{member_name}",
+                include_admin_sheets=False,
+                group_id_override=group_id,
+            )
+            archive.writestr(member_filename, member_content)
+
+    archive_stream.seek(0)
+    group = await get_active_group(db, user)
+    filename = f"{filename_prefix}_{_safe_filename_part(group.name)}_{period}_{datetime.now():%Y%m%d_%H%M%S}.zip"
+    return archive_stream.read(), filename, "application/zip"

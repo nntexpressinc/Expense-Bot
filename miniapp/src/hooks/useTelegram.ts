@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 
 interface TelegramWebApp {
   initData: string
@@ -88,10 +88,37 @@ declare global {
 
 export const useTelegram = () => {
   const webApp = window.Telegram?.WebApp
+  const [authReady, setAuthReady] = useState<boolean>(() => Boolean(webApp?.initData))
 
   useEffect(() => {
-    if (webApp) {
-      webApp.ready()
+    if (!webApp) {
+      setAuthReady(false)
+      return
+    }
+
+    webApp.ready()
+    if (webApp.initData) {
+      setAuthReady(true)
+      return
+    }
+
+    let cancelled = false
+    const startedAt = Date.now()
+    const timer = window.setInterval(() => {
+      if (cancelled) return
+      if (window.Telegram?.WebApp?.initData) {
+        setAuthReady(true)
+        window.clearInterval(timer)
+        return
+      }
+      if (Date.now() - startedAt > 4000) {
+        window.clearInterval(timer)
+      }
+    }, 120)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
     }
   }, [webApp])
 
@@ -135,6 +162,8 @@ export const useTelegram = () => {
 
   return {
     webApp,
+    initData: webApp?.initData || '',
+    authReady,
     user,
     platform: webApp?.platform,
     colorScheme: webApp?.colorScheme || 'light',

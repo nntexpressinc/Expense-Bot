@@ -8,7 +8,7 @@ from sqlalchemy import select
 from bot.keyboards import get_report_period_keyboard
 from bot.services.finance import get_or_create_user
 from config.i18n import get_text
-from database.reporting import generate_excel_report
+from database.reporting import generate_report_download
 from database.session import async_session_factory
 from database.models import User
 
@@ -52,7 +52,8 @@ async def _generate_report_excel(user_id: int, period: str) -> tuple[bytes, str]
         user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
         if not user:
             raise ValueError('User not found')
-        return await generate_excel_report(db, user, period)
+        content, filename, _ = await generate_report_download(db, user, period)
+        return content, filename
 
 
 async def _send_period_report(chat_message: Message, user_id: int, lang: str, period: str) -> None:
@@ -75,9 +76,9 @@ async def _send_period_report(chat_message: Message, user_id: int, lang: str, pe
         return
 
     caption = {
-        'uz': 'Excel hisobot tayyor',
-        'ru': 'Excel-\u043e\u0442\u0447\u0451\u0442 \u0433\u043e\u0442\u043e\u0432',
-        'en': 'Excel report is ready',
+        'uz': 'Hisobot fayli tayyor',
+        'ru': 'Файл отчёта готов',
+        'en': 'Report file is ready',
     }
 
     await chat_message.answer_document(

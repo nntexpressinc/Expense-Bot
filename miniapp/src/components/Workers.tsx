@@ -6,6 +6,7 @@ import {
   createWorkerAdvance,
   createWorkerPayment,
   getWorkersSummary,
+  listAttendanceEntries,
   listWorkers,
 } from '@/api/endpoints'
 import { useAppSettings } from '@/hooks/useAppSettings'
@@ -34,13 +35,13 @@ const workerCopy = {
     volumeHint: 'Bugungi birlikni kiriting',
   },
   ru: {
-    todayPresent: '\u2705 Отметить приход сегодня',
-    todayMarked: '\u2705 На сегодня уже отмечено',
-    attendanceMissing: 'Сегодняшняя посещаемость ещё не отмечена',
-    attendanceSaved: 'Сегодняшняя посещаемость сохранена',
-    payFromBalance: 'Выплата спишется с основного баланса',
-    optionalRole: 'Роль (необязательно)',
-    volumeHint: 'Введите объём за сегодня',
+    todayPresent: '\u2705 \u041e\u0442\u043c\u0435\u0442\u0438\u0442\u044c \u043f\u0440\u0438\u0445\u043e\u0434 \u0441\u0435\u0433\u043e\u0434\u043d\u044f',
+    todayMarked: '\u2705 \u041d\u0430 \u0441\u0435\u0433\u043e\u0434\u043d\u044f \u0443\u0436\u0435 \u043e\u0442\u043c\u0435\u0447\u0435\u043d\u043e',
+    attendanceMissing: '\u0421\u0435\u0433\u043e\u0434\u043d\u044f\u0448\u043d\u044f\u044f \u043f\u043e\u0441\u0435\u0449\u0430\u0435\u043c\u043e\u0441\u0442\u044c \u0435\u0449\u0451 \u043d\u0435 \u043e\u0442\u043c\u0435\u0447\u0435\u043d\u0430',
+    attendanceSaved: '\u0421\u0435\u0433\u043e\u0434\u043d\u044f\u0448\u043d\u044f\u044f \u043f\u043e\u0441\u0435\u0449\u0430\u0435\u043c\u043e\u0441\u0442\u044c \u0441\u043e\u0445\u0440\u0430\u043d\u0435\u043d\u0430',
+    payFromBalance: '\u0412\u044b\u043f\u043b\u0430\u0442\u0430 \u0441\u043f\u0438\u0448\u0435\u0442\u0441\u044f \u0441 \u043e\u0441\u043d\u043e\u0432\u043d\u043e\u0433\u043e \u0431\u0430\u043b\u0430\u043d\u0441\u0430',
+    optionalRole: '\u0420\u043e\u043b\u044c (\u043d\u0435\u043e\u0431\u044f\u0437\u0430\u0442\u0435\u043b\u044c\u043d\u043e)',
+    volumeHint: '\u0412\u0432\u0435\u0434\u0438\u0442\u0435 \u043e\u0431\u044a\u0451\u043c \u0437\u0430 \u0441\u0435\u0433\u043e\u0434\u043d\u044f',
   },
   en: {
     todayPresent: '\u2705 Mark present today',
@@ -76,11 +77,16 @@ export default function Workers() {
     queryKey: ['workers-summary', month.start, month.end],
     queryFn: () => getWorkersSummary({ start_date: month.start, end_date: month.end }),
   })
+  const attendanceQuery = useQuery({
+    queryKey: ['workers-attendance', month.start, month.end],
+    queryFn: () => listAttendanceEntries({ start_date: month.start, end_date: month.end, limit: 80 }),
+  })
 
   const refresh = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['workers'] }),
       queryClient.invalidateQueries({ queryKey: ['workers-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['workers-attendance'] }),
       queryClient.invalidateQueries({ queryKey: ['balance'] }),
     ])
   }
@@ -161,6 +167,8 @@ export default function Workers() {
 
   const workerSummaryMap = new Map((summaryQuery.data?.workers || []).map((worker) => [worker.worker_id, worker]))
   const totals = summaryQuery.data?.totals
+  const attendanceItems = attendanceQuery.data || []
+  const markedTodayCount = workersQuery.data?.filter((worker) => worker.today_status).length || 0
 
   const submitWorker = async (event: FormEvent) => {
     event.preventDefault()
@@ -218,10 +226,15 @@ export default function Workers() {
     <Page title={t('team', language)} subtitle={settings?.active_group_name || '-'}>
       <Card>
         <SectionTitle title={t('workers', language)} hint={`${month.start} - ${month.end}`} />
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="surface-card-muted px-4 py-4">
             <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('workers', language)}</p>
             <p className="mt-2 text-xl font-semibold text-[var(--text)]">{workersQuery.data?.length || 0}</p>
+          </div>
+          <div className="surface-card-muted px-4 py-4">
+            <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('attendance', language)}</p>
+            <p className="mt-2 text-xl font-semibold text-[var(--text)]">{markedTodayCount}</p>
+            <p className="mt-1 text-xs text-[var(--text-soft)]">{t('day', language)}</p>
           </div>
           <div className="surface-card-muted px-4 py-4">
             <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('payable', language)}</p>
@@ -267,7 +280,7 @@ export default function Workers() {
                     <div>
                       <p className="text-base font-semibold text-[var(--text)]">{worker.full_name}</p>
                       <p className="mt-1 text-sm text-[var(--text-soft)]">
-                        {worker.role_name || '-'} - {t(worker.payment_type, language)}
+                        {worker.role_name || '-'} - {t(worker.payment_type as never, language)}
                       </p>
                       <p className="mt-1 text-sm text-[var(--text-soft)]">
                         {formatMoney(Number(worker.rate), worker.currency, locale)}
@@ -356,6 +369,31 @@ export default function Workers() {
           </div>
         ) : (
           <EmptyState title={t('noWorkers', language)} />
+        )}
+      </Card>
+
+      <Card>
+        <SectionTitle title={t('recentAttendance', language)} hint={`${month.start} - ${month.end}`} />
+        {attendanceItems.length ? (
+          <div className="space-y-2">
+            {attendanceItems.map((entry) => (
+              <div key={entry.id} className="surface-card-muted px-4 py-3">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--text)]">{entry.worker_name}</p>
+                    <p className="mt-1 text-xs text-[var(--text-soft)]">{entry.entry_date}</p>
+                    {entry.comment ? <p className="mt-2 text-sm text-[var(--text-soft)]">{entry.comment}</p> : null}
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-semibold capitalize text-[var(--text)]">{entry.status.replace('_', ' ')}</p>
+                    {entry.units > 0 ? <p className="mt-1 text-xs text-[var(--text-soft)]">{entry.units}</p> : null}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title={t('attendance', language)} hint={t('retry', language)} />
         )}
       </Card>
     </Page>

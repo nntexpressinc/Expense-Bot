@@ -2,12 +2,13 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from api.routers.auth import get_current_user
 from config.admin import check_user_admin_status
 from database.audit import write_audit_log
+from database.finance import get_user_balance_summary
 from database.group_context import (
     add_user_to_group,
     create_group_for_user,
@@ -17,7 +18,7 @@ from database.group_context import (
     remove_user_from_group,
     rename_group,
 )
-from database.models import Group, User, UserGroup
+from database.models import Debt, Transaction, User, UserGroup
 from database.session import get_db
 
 router = APIRouter(prefix="/groups", tags=["Groups"])
@@ -55,6 +56,19 @@ class GroupMemberResponse(BaseModel):
     first_name: str
     last_name: Optional[str]
     role: str
+
+
+class GroupUserOverviewItem(BaseModel):
+    user_id: int
+    display_name: str
+    username: Optional[str]
+    role: str
+    total_balance: float
+    debt_balance: float
+    outstanding_debt_balance: float
+    debt_count: int
+    active_debt_count: int
+    recent_transactions: list[dict]
 
 
 @router.get("/")
@@ -208,3 +222,66 @@ async def delete_group_member(
     )
     await db.commit()
     return {"success": True}
+
+
+@router.get("/{group_id}/overview", response_model=List[GroupUserOverviewItem])
+async def get_group_user_overview(
+    group_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    lang = _lang(current_user.language_code)
+    if not await is_group_admin(db, current_user, group_id) and not await check_user_admin_status(current_user):
+        raise HTTPException(status_code=403, detail=_t(lang, "Ruxsat yo'q", "Доступ запрещён", "Access denied"))
+
+    rows = (
+        await db.execute(
+            select(UserGroup, User)
+            .join(User, User.id == UserGroup.user_id)
+            .where(UserGroup.group_id == group_id)
+            .order_by(User.first_name.asc(), User.id.asc())
+        )
+    ).all()
+
+    response: list[dict] = []
+    for membership, user in rows:
+        balance = await get_user_balance_summary(db, user, group_id=group_id)
+        recent_transactions = (
+            await db.execute(
+                select(Transaction)
+                .where(Transaction.user_id == user.id, Transaction.group_id == group_id)
+                .order_by(desc(Transaction.transaction_date))
+                .limit(5)
+            )
+        ).scalars().all()
+        debts = (
+            await db.execute(select(Debt).where(Debt.user_id == user.id, Debt.group_id == group_id))
+        ).scalars().all()
+
+        display_name = f"{user.first_name or ''} {user.last_name or ''}".strip() or (f"@{user.username}" if user.username else str(user.id))
+        response.append(
+            {
+                "user_id": user.id,
+                "display_name": display_name,
+                "username": user.username,
+                "role": membership.role,
+                "total_balance": float(balance["total_balance"]),
+                "debt_balance": float(balance["debt_balance"]),
+                "outstanding_debt_balance": float(balance["outstanding_debt_balance"]),
+                "debt_count": len(debts),
+                "active_debt_count": sum(1 for debt in debts if debt.status in {"active", "partially_repaid"}),
+                "recent_transactions": [
+                    {
+                        "id": str(item.id),
+                        "type": item.type.value if hasattr(item.type, "value") else str(item.type),
+                        "amount": float(item.amount),
+                        "currency": item.currency,
+                        "description": item.description or "-",
+                        "date": item.transaction_date.isoformat(),
+                    }
+                    for item in recent_transactions
+                ],
+            }
+        )
+
+    return response

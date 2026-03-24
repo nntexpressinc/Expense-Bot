@@ -4,6 +4,7 @@ import {
   createGroup,
   createWorker,
   getGroupMembers,
+  getGroupUserOverview,
   getGroups,
   getWorkersSummary,
   renameGroup,
@@ -54,12 +55,18 @@ export const AdminPanel = () => {
     queryFn: () => getWorkersSummary({ start_date: month.start, end_date: month.end }),
     enabled: Boolean(settings?.active_group_id && canManageAdmin),
   })
+  const overviewQuery = useQuery({
+    queryKey: ['group-user-overview', settings?.active_group_id],
+    queryFn: () => getGroupUserOverview(settings?.active_group_id as number),
+    enabled: Boolean(settings?.active_group_id && canManageAdmin),
+  })
 
   const refresh = async () => {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['admin-groups'] }),
       queryClient.invalidateQueries({ queryKey: ['admin-members'] }),
       queryClient.invalidateQueries({ queryKey: ['admin-workers-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['group-user-overview'] }),
       queryClient.invalidateQueries({ queryKey: ['user-settings'] }),
       queryClient.invalidateQueries({ queryKey: ['workers'] }),
       queryClient.invalidateQueries({ queryKey: ['group-members'] }),
@@ -181,6 +188,64 @@ export const AdminPanel = () => {
           </div>
         ) : (
           <EmptyState title={t('noGroups', language)} />
+        )}
+      </Card>
+
+      <Card>
+        <SectionTitle title={t('usersOverview', language)} hint={t('members', language)} />
+        {overviewQuery.data?.length ? (
+          <div className="space-y-3">
+            {overviewQuery.data.map((item) => (
+              <div key={item.user_id} className="surface-card-muted px-4 py-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--text)]">{item.display_name}</p>
+                    <p className="mt-1 text-xs text-[var(--text-soft)]">
+                      @{item.username || 'no_username'} - {item.role}
+                    </p>
+                  </div>
+                  <span className="text-xs text-[var(--text-muted)]">ID {item.user_id}</span>
+                </div>
+                <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                  <div className="rounded-2xl border border-[var(--border)] px-3 py-3">
+                    <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('totalBalance', language)}</p>
+                    <p className="mt-2 text-sm font-semibold text-[var(--text)]">{formatMoney(item.total_balance, settings?.default_currency || 'UZS', locale)}</p>
+                  </div>
+                  <div className="rounded-2xl border border-[var(--border)] px-3 py-3">
+                    <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('debtBalance', language)}</p>
+                    <p className="mt-2 text-sm font-semibold text-[var(--text)]">{formatMoney(item.debt_balance, settings?.default_currency || 'UZS', locale)}</p>
+                  </div>
+                  <div className="rounded-2xl border border-[var(--border)] px-3 py-3">
+                    <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('outstandingDebt', language)}</p>
+                    <p className="mt-2 text-sm font-semibold text-[var(--text)]">{formatMoney(item.outstanding_debt_balance, settings?.default_currency || 'UZS', locale)}</p>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--text-soft)]">
+                  <span>{t('debts', language)}: {item.debt_count}</span>
+                  <span>{t('activeDebts', language)}: {item.active_debt_count}</span>
+                </div>
+                {item.recent_transactions.length ? (
+                  <div className="mt-3 space-y-2">
+                    {item.recent_transactions.map((transaction) => (
+                      <div key={transaction.id} className="rounded-2xl border border-[var(--border)] px-3 py-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="text-sm font-medium text-[var(--text)]">{transaction.description}</p>
+                            <p className="mt-1 text-xs text-[var(--text-soft)]">{transaction.type}</p>
+                          </div>
+                          <p className="text-sm font-semibold text-[var(--text)]">
+                            {formatMoney(transaction.amount, transaction.currency, locale)}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <EmptyState title={t('members', language)} />
         )}
       </Card>
 
