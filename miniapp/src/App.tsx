@@ -33,6 +33,7 @@ function App() {
   const allowDevPreview = import.meta.env.DEV && !webApp
   const { settings, theme, isLoading } = useAppSettings(allowDevPreview || authReady)
   const canManageAdmin = Boolean(settings?.is_group_admin || settings?.is_admin)
+  const canManageWorkers = Boolean(settings?.is_group_admin || settings?.is_admin)
   const routerBase = import.meta.env.BASE_URL.replace(/\/$/, '') || '/'
 
   useEffect(() => {
@@ -66,7 +67,7 @@ function App() {
             <Route path="/transactions" element={<Transactions />} />
             <Route path="/transfers" element={<Transfers />} />
             <Route path="/debts" element={<Debts />} />
-            <Route path="/team" element={<Workers />} />
+            <Route path="/team" element={canManageWorkers ? <Workers /> : <Navigate to="/settings" replace />} />
             <Route path="/statistics" element={<Statistics />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/admin" element={canManageAdmin ? <AdminPanel /> : <Navigate to="/settings" replace />} />

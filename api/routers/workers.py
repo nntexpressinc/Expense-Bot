@@ -32,6 +32,12 @@ def _t(lang: str, uz: str, ru: str, en: str) -> str:
     return uz
 
 
+async def _require_workers_admin(db: AsyncSession, current_user: User, group_id: int) -> None:
+    lang = _lang(current_user.language_code)
+    if not await is_group_admin(db, current_user, group_id):
+        raise HTTPException(status_code=403, detail=_t(lang, "Ruxsat yo'q", "Доступ запрещён", "Access denied"))
+
+
 class WorkerCreateRequest(BaseModel):
     full_name: str = Field(..., min_length=2, max_length=255)
     phone: Optional[str] = None
@@ -96,6 +102,7 @@ async def list_workers(
     db: AsyncSession = Depends(get_db),
 ):
     group_id = await get_active_group_id(db, current_user)
+    await _require_workers_admin(db, current_user, group_id)
     query = select(Worker).where(Worker.group_id == group_id)
     if not include_inactive:
         query = query.where(Worker.is_active.is_(True))
@@ -140,10 +147,8 @@ async def list_attendance_entries(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    lang = _lang(current_user.language_code)
     group_id = await get_active_group_id(db, current_user)
-    if not await is_group_admin(db, current_user, group_id):
-        raise HTTPException(status_code=403, detail=_t(lang, "Ruxsat yo'q", "Доступ запрещён", "Access denied"))
+    await _require_workers_admin(db, current_user, group_id)
 
     today = date.today()
     resolved_start = start_date or today.replace(day=1)
@@ -234,10 +239,8 @@ async def record_attendance(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    lang = _lang(current_user.language_code)
     group_id = await get_active_group_id(db, current_user)
-    if not await is_group_admin(db, current_user, group_id):
-        raise HTTPException(status_code=403, detail=_t(lang, "Ruxsat yo'q", "Доступ запрещён", "Access denied"))
+    await _require_workers_admin(db, current_user, group_id)
 
     worker = (
         await db.execute(select(Worker).where(Worker.id == worker_id, Worker.group_id == group_id))
@@ -413,10 +416,8 @@ async def record_worker_advance(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    lang = _lang(current_user.language_code)
     group_id = await get_active_group_id(db, current_user)
-    if not await is_group_admin(db, current_user, group_id):
-        raise HTTPException(status_code=403, detail=_t(lang, "Ruxsat yo'q", "Доступ запрещён", "Access denied"))
+    await _require_workers_admin(db, current_user, group_id)
     worker = (await db.execute(select(Worker).where(Worker.id == worker_id, Worker.group_id == group_id))).scalar_one_or_none()
     if not worker:
         raise HTTPException(status_code=404, detail=_t(lang, "Ishchi topilmadi", "Сотрудник не найден", "Worker not found"))
@@ -430,10 +431,8 @@ async def record_worker_payment(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    lang = _lang(current_user.language_code)
     group_id = await get_active_group_id(db, current_user)
-    if not await is_group_admin(db, current_user, group_id):
-        raise HTTPException(status_code=403, detail=_t(lang, "Ruxsat yo'q", "Доступ запрещён", "Access denied"))
+    await _require_workers_admin(db, current_user, group_id)
     worker = (await db.execute(select(Worker).where(Worker.id == worker_id, Worker.group_id == group_id))).scalar_one_or_none()
     if not worker:
         raise HTTPException(status_code=404, detail=_t(lang, "Ishchi topilmadi", "Сотрудник не найден", "Worker not found"))
@@ -449,6 +448,7 @@ async def get_payroll_summary(
     db: AsyncSession = Depends(get_db),
 ):
     group_id = await get_active_group_id(db, current_user)
+    await _require_workers_admin(db, current_user, group_id)
     summary = await calculate_group_payroll_summary(
         db,
         group_id=group_id,
@@ -470,6 +470,7 @@ async def get_worker_summary(
 ):
     lang = _lang(current_user.language_code)
     group_id = await get_active_group_id(db, current_user)
+    await _require_workers_admin(db, current_user, group_id)
     worker = (await db.execute(select(Worker).where(Worker.id == worker_id, Worker.group_id == group_id))).scalar_one_or_none()
     if not worker:
         raise HTTPException(status_code=404, detail=_t(lang, "Ishchi topilmadi", "Сотрудник не найден", "Worker not found"))

@@ -68,18 +68,22 @@ export default function Workers() {
 
   const month = useMemo(monthBounds, [])
   const copy = workerCopy[language]
+  const canManageWorkers = Boolean(settings?.is_group_admin || settings?.is_admin)
 
   const workersQuery = useQuery({
     queryKey: ['workers'],
     queryFn: () => listWorkers({ include_inactive: false }),
+    enabled: canManageWorkers,
   })
   const summaryQuery = useQuery({
     queryKey: ['workers-summary', month.start, month.end],
     queryFn: () => getWorkersSummary({ start_date: month.start, end_date: month.end }),
+    enabled: canManageWorkers,
   })
   const attendanceQuery = useQuery({
     queryKey: ['workers-attendance', month.start, month.end],
     queryFn: () => listAttendanceEntries({ start_date: month.start, end_date: month.end, limit: 300 }),
+    enabled: canManageWorkers,
   })
 
   const refresh = async () => {
@@ -153,7 +157,7 @@ export default function Workers() {
     onError: handleError,
   })
 
-  if (!settings?.is_group_admin && !settings?.is_admin) {
+  if (!canManageWorkers) {
     return (
       <Page title={t('team', language)} subtitle={settings?.active_group_name || '-'}>
         <EmptyState title={t('notAllowed', language)} />
