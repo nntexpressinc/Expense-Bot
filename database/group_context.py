@@ -91,6 +91,9 @@ async def ensure_user_setup(db: AsyncSession, user: User) -> User:
 
 
 async def get_active_group_id(db: AsyncSession, user: User) -> int:
+    impersonated_group_id = getattr(user, "_impersonated_group_id", None)
+    if impersonated_group_id:
+        return int(impersonated_group_id)
     await ensure_user_setup(db, user)
     return int(user.active_group_id or user.group_id or user.id)
 

@@ -1,5 +1,6 @@
 ﻿import axios from 'axios'
 
+const ACT_AS_STORAGE_KEY = 'expense-bot-act-as-user'
 const envBase = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || ''
 const API_BASE_URL = envBase
   ? envBase.replace(/\/$/, '')
@@ -14,10 +15,29 @@ const apiClient = axios.create({
   },
 })
 
+export const getActAsUserId = () => {
+  const raw = window.localStorage.getItem(ACT_AS_STORAGE_KEY)
+  if (!raw) return null
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
+export const setActAsUserId = (userId: number) => {
+  window.localStorage.setItem(ACT_AS_STORAGE_KEY, String(userId))
+}
+
+export const clearActAsUserId = () => {
+  window.localStorage.removeItem(ACT_AS_STORAGE_KEY)
+}
+
 apiClient.interceptors.request.use((config) => {
   const webApp = window.Telegram?.WebApp
   if (webApp?.initData) {
     config.headers['X-Telegram-Init-Data'] = webApp.initData
+  }
+  const actAsUserId = getActAsUserId()
+  if (actAsUserId) {
+    config.headers['X-Act-As-User'] = String(actAsUserId)
   }
   return config
 })

@@ -18,9 +18,12 @@ async def write_audit_log(
     group_id: Optional[int] = None,
     payload: Optional[dict[str, Any]] = None,
 ) -> AuditLog:
+    actor_user_id = None
+    if actor:
+        actor_user_id = getattr(actor, "_actor_user_id", actor.id)
     record = AuditLog(
         group_id=group_id,
-        actor_user_id=actor.id if actor else None,
+        actor_user_id=actor_user_id,
         entity_type=entity_type,
         entity_id=entity_id,
         action=action,

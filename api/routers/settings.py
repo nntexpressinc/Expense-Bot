@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -63,6 +63,9 @@ class UserSettingsResponse(BaseModel):
     groups: List[GroupOptionResponse]
     is_admin: bool
     is_group_admin: bool
+    is_impersonating: bool = False
+    actor_user_id: Optional[int] = None
+    actor_display_name: Optional[str] = None
 
 
 class UpdateLanguageRequest(BaseModel):
@@ -92,10 +95,21 @@ class UpdateExchangeRateRequest(BaseModel):
     rate: Decimal = Field(..., gt=0, description="Exchange rate must be positive")
 
 
-async def build_user_settings_response(db: AsyncSession, current_user: User) -> dict:
+async def build_user_settings_response(db: AsyncSession, current_user: User, request: Request | None = None) -> dict:
     global_admin = await check_user_admin_status(current_user)
     active_group = await get_active_group(db, current_user)
     groups = await list_user_groups(db, current_user.id)
+    actor_user = getattr(request.state, "actor_user", None) if request else None
+    is_impersonating = bool(getattr(current_user, "_is_impersonated", False))
+    actor_display_name = None
+    actor_user_id = None
+    if is_impersonating and actor_user:
+        actor_display_name = (
+            f"{actor_user.first_name or ''} {actor_user.last_name or ''}".strip()
+            or actor_user.username
+            or str(actor_user.id)
+        )
+        actor_user_id = actor_user.id
 
     return {
         "id": current_user.id,
@@ -110,6 +124,9 @@ async def build_user_settings_response(db: AsyncSession, current_user: User) -> 
         "groups": groups,
         "is_admin": global_admin,
         "is_group_admin": await is_group_admin(db, current_user, active_group.id if active_group else None),
+        "is_impersonating": is_impersonating,
+        "actor_user_id": actor_user_id,
+        "actor_display_name": actor_display_name,
     }
 
 
@@ -164,59 +181,64 @@ async def get_balance(
 
 @router.get("/user", response_model=UserSettingsResponse)
 async def get_user_settings(
+    request: Request,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await build_user_settings_response(db, current_user)
+    return await build_user_settings_response(db, current_user, request)
 
 
 @router.patch("/user/currency", response_model=UserSettingsResponse)
 async def update_user_currency(
-    request: UpdateCurrencyRequest,
+    request_http: Request,
+    payload: UpdateCurrencyRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    currency = normalize_currency(request.currency, "UZS")
+    currency = normalize_currency(payload.currency, "UZS")
     current_user.default_currency = currency
     await db.commit()
     await db.refresh(current_user)
-    return await build_user_settings_response(db, current_user)
+    return await build_user_settings_response(db, current_user, request_http)
 
 
 @router.patch("/user/language", response_model=UserSettingsResponse)
 async def update_user_language(
-    request: UpdateLanguageRequest,
+    request_http: Request,
+    payload: UpdateLanguageRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    language = normalize_lang(request.language)
+    language = normalize_lang(payload.language)
     current_user.language_code = language
     await db.commit()
     await db.refresh(current_user)
-    return await build_user_settings_response(db, current_user)
+    return await build_user_settings_response(db, current_user, request_http)
 
 
 @router.patch("/user/theme", response_model=UserSettingsResponse)
 async def update_user_theme(
-    request: UpdateThemeRequest,
+    request_http: Request,
+    payload: UpdateThemeRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    theme = normalize_theme(request.theme)
+    theme = normalize_theme(payload.theme)
     current_user.theme_preference = theme
     await db.commit()
     await db.refresh(current_user)
-    return await build_user_settings_response(db, current_user)
+    return await build_user_settings_response(db, current_user, request_http)
 
 
 @router.patch("/user/active-group", response_model=UserSettingsResponse)
 async def update_active_group(
-    request: UpdateActiveGroupRequest,
+    request_http: Request,
+    payload: UpdateActiveGroupRequest,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        group = await set_active_group(db, current_user, request.group_id)
+        group = await set_active_group(db, current_user, payload.group_id)
     except PermissionError:
         raise HTTPException(status_code=403, detail="Group access denied")
     except ValueError as exc:
@@ -224,7 +246,7 @@ async def update_active_group(
 
     await db.commit()
     await db.refresh(current_user)
-    return await build_user_settings_response(db, current_user)
+    return await build_user_settings_response(db, current_user, request_http)
 
 
 @router.get("/exchange-rates", response_model=List[ExchangeRateResponse])

@@ -20,6 +20,9 @@ export interface UserSettings {
   active_group_id?: number | null
   active_group_name?: string | null
   groups: UserGroup[]
+  is_impersonating?: boolean
+  actor_user_id?: number | null
+  actor_display_name?: string | null
 }
 
 export interface Balance {

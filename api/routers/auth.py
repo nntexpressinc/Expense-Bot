@@ -1,13 +1,22 @@
 ﻿import json
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from database.session import get_db
-from database.models import User
-from database.finance import normalize_currency
-from database.group_context import ensure_user_setup, normalize_lang, normalize_theme
+
 from api.middleware.telegram_auth import verify_telegram_data
+from config.admin import check_user_admin_status
 from config.settings import settings
+from database.finance import normalize_currency
+from database.group_context import (
+    ensure_user_setup,
+    get_active_group_id,
+    is_group_admin,
+    normalize_lang,
+    normalize_theme,
+    user_has_group_access,
+)
+from database.models import User
+from database.session import get_db
 
 router = APIRouter()
 
@@ -71,15 +80,17 @@ async def _get_or_create_user(db: AsyncSession, telegram_user: dict) -> User:
 
 
 async def get_current_user(
+    request: Request,
     x_telegram_init_data: str = Header(None),
-    db: AsyncSession = Depends(get_db)
+    x_act_as_user: str | None = Header(None),
+    db: AsyncSession = Depends(get_db),
 ) -> User:
     """Dependency to resolve the current user from Telegram init data."""
     if not x_telegram_init_data or x_telegram_init_data == "null":
         if not settings.DEBUG:
             raise HTTPException(status_code=401, detail="Missing Telegram init data")
 
-        return await _get_or_create_user(
+        actor_user = await _get_or_create_user(
             db,
             {
                 "id": 123456789,
@@ -89,10 +100,49 @@ async def get_current_user(
                 "language_code": "ru",
             },
         )
+    else:
+        telegram_data = verify_telegram_data(x_telegram_init_data)
+        user_json = json.loads(telegram_data.get("user", "{}"))
+        actor_user = await _get_or_create_user(db, user_json)
 
-    telegram_data = verify_telegram_data(x_telegram_init_data)
-    user_json = json.loads(telegram_data.get("user", "{}"))
-    return await _get_or_create_user(db, user_json)
+    request.state.actor_user = actor_user
+    request.state.effective_user = actor_user
+    request.state.is_impersonating = False
+
+    if not x_act_as_user:
+        return actor_user
+
+    try:
+        target_user_id = int(str(x_act_as_user).strip())
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Invalid impersonation user id")
+
+    if target_user_id == actor_user.id:
+        return actor_user
+
+    actor_group_id = await get_active_group_id(db, actor_user)
+    global_admin = await check_user_admin_status(actor_user)
+    if not global_admin and not await is_group_admin(db, actor_user, actor_group_id):
+        raise HTTPException(status_code=403, detail="Impersonation is allowed only for admins")
+
+    target_user = (await db.execute(select(User).where(User.id == target_user_id))).scalar_one_or_none()
+    if not target_user:
+        raise HTTPException(status_code=404, detail="Target user not found")
+
+    if not global_admin and not await user_has_group_access(db, target_user.id, actor_group_id):
+        raise HTTPException(status_code=403, detail="Target user is not available in the current group")
+
+    setattr(target_user, "_impersonated_group_id", actor_group_id)
+    setattr(target_user, "_actor_user_id", actor_user.id)
+    setattr(
+        target_user,
+        "_actor_display_name",
+        f"{actor_user.first_name or ''} {actor_user.last_name or ''}".strip() or actor_user.username or str(actor_user.id),
+    )
+    setattr(target_user, "_is_impersonated", True)
+    request.state.effective_user = target_user
+    request.state.is_impersonating = True
+    return target_user
 
 
 @router.get("/validate")
@@ -104,6 +154,6 @@ async def validate_token(current_user: User = Depends(get_current_user)):
             "id": current_user.id,
             "telegram_id": current_user.id,
             "username": current_user.username,
-            "first_name": current_user.first_name
-        }
+            "first_name": current_user.first_name,
+        },
     }

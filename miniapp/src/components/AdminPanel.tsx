@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import {
   createGroup,
   createWorker,
@@ -25,8 +26,9 @@ const currentMonthRange = () => {
 }
 
 export const AdminPanel = () => {
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
-  const { settings, language, locale } = useAppSettings()
+  const { settings, language, locale, startImpersonation } = useAppSettings()
   const { showAlert, haptic } = useTelegram()
   const [groupName, setGroupName] = useState('')
   const [renameValue, setRenameValue] = useState('')
@@ -223,6 +225,18 @@ export const AdminPanel = () => {
                 <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--text-soft)]">
                   <span>{t('debts', language)}: {item.debt_count}</span>
                   <span>{t('activeDebts', language)}: {item.active_debt_count}</span>
+                </div>
+                <div className="mt-3">
+                  <button
+                    type="button"
+                    className="secondary-button w-full"
+                    onClick={async () => {
+                      await startImpersonation(item.user_id)
+                      navigate('/', { replace: true })
+                    }}
+                  >
+                    {t('switchAsUser', language)}
+                  </button>
                 </div>
                 {item.recent_transactions.length ? (
                   <div className="mt-3 space-y-2">

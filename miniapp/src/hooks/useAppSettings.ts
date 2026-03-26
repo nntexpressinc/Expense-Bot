@@ -8,6 +8,7 @@ import {
   updateLanguage,
   updateTheme,
 } from '@/api/endpoints'
+import { clearActAsUserId, setActAsUserId } from '@/api/client'
 import { localeFromLang, normalizeLang } from '@/i18n'
 
 export const SETTINGS_QUERY_KEY = ['user-settings']
@@ -102,6 +103,18 @@ export const useAppSettings = (enabled = true) => {
     ],
   )
 
+  const startImpersonation = async (userId: number) => {
+    setActAsUserId(userId)
+    await queryClient.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY })
+    await invalidateGroupScopedData()
+  }
+
+  const stopImpersonation = async () => {
+    clearActAsUserId()
+    await queryClient.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY })
+    await invalidateGroupScopedData()
+  }
+
   return {
     ...query,
     settings,
@@ -113,6 +126,8 @@ export const useAppSettings = (enabled = true) => {
     setCurrency: currencyMutation.mutateAsync,
     setTheme: themeMutation.mutateAsync,
     setActiveGroup: activeGroupMutation.mutateAsync,
+    startImpersonation,
+    stopImpersonation,
     refreshSettings: () => queryClient.invalidateQueries({ queryKey: SETTINGS_QUERY_KEY }),
   }
 }
