@@ -1,9 +1,9 @@
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from io import BytesIO
 from typing import List
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import and_, select
@@ -51,7 +51,21 @@ def _period_start(period: str) -> tuple[datetime, str]:
     return start, 'month'
 
 
-def _period_label(lang: str, label_type: str, start: datetime, now: datetime) -> str:
+def _period_bounds(period: str, date_from: date | None = None, date_to: date | None = None) -> tuple[datetime, datetime, str]:
+    now = datetime.now()
+    if period == 'custom':
+        if date_from is None or date_to is None:
+            raise ValueError('Custom period requires date_from and date_to')
+        start = datetime.combine(date_from, time.min)
+        end = datetime.combine(date_to, time.max)
+        if start > end:
+            raise ValueError('date_from must be before or equal to date_to')
+        return start, end, 'custom'
+    start, label_type = _period_start(period)
+    return start, now, label_type
+
+
+def _period_label(lang: str, label_type: str, start: datetime, now: datetime, end: datetime | None = None) -> str:
     if label_type == 'day':
         return {
             'uz': f"Bugun ({start.strftime('%d.%m.%Y')})",
@@ -66,17 +80,37 @@ def _period_label(lang: str, label_type: str, start: datetime, now: datetime) ->
         }.get(lang, f"Hafta ({start.strftime('%d.%m')} - {now.strftime('%d.%m.%Y')})")
     if label_type == 'year':
         return {'uz': f"{start.year} yil", 'ru': f"{start.year} \u0433\u043e\u0434", 'en': f"{start.year}"}.get(lang, f"{start.year} yil")
+    if label_type == 'custom':
+        end_date = end or now
+        return {
+            'uz': f"{start.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}",
+            'ru': f"{start.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}",
+            'en': f"{start.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}",
+        }.get(lang, f"{start.strftime('%d.%m.%Y')} - {end_date.strftime('%d.%m.%Y')}")
     month_name = start.strftime('%B %Y')
     return {'uz': month_name, 'ru': month_name, 'en': month_name}.get(lang, month_name)
 
 
 @router.get('/export/excel')
 async def export_statistics_excel(
-    period: str = Query('month', pattern='^(day|week|month|year)$'),
+    period: str = Query('month', pattern='^(day|week|month|year|custom)$'),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    content, filename, media_type = await generate_report_download(db, current_user, period, filename_prefix='statistics')
+    try:
+        _period_bounds(period, date_from, date_to)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    content, filename, media_type = await generate_report_download(
+        db,
+        current_user,
+        period,
+        date_from=date_from,
+        date_to=date_to,
+        filename_prefix='statistics',
+    )
     return StreamingResponse(
         BytesIO(content),
         media_type=media_type,
@@ -86,12 +120,17 @@ async def export_statistics_excel(
 
 @router.get('/', response_model=StatisticsResponse)
 async def get_statistics(
-    period: str = Query('month', pattern='^(day|week|month|year)$'),
+    period: str = Query('month', pattern='^(day|week|month|year|custom)$'),
+    date_from: date | None = Query(None),
+    date_to: date | None = Query(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     now = datetime.now()
-    start_date, label_type = _period_start(period)
+    try:
+        start_date, end_date, label_type = _period_bounds(period, date_from, date_to)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     currency = normalize_currency(current_user.default_currency, 'UZS')
     lang = (current_user.language_code or 'uz').split('-')[0].lower()
     group_id = await get_active_group_id(db, current_user)
@@ -104,6 +143,7 @@ async def get_statistics(
                     Transaction.user_id == current_user.id,
                     Transaction.group_id == group_id,
                     Transaction.transaction_date >= start_date,
+                    Transaction.transaction_date <= end_date,
                 )
             )
         )
@@ -156,7 +196,7 @@ async def get_statistics(
             )
 
     return {
-        'period': _period_label(lang, label_type, start_date, now),
+        'period': _period_label(lang, label_type, start_date, now, end_date),
         'total_income': float(total_income),
         'total_expense': float(total_expense),
         'difference': float(total_income - total_expense),

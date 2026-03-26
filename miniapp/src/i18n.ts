@@ -134,6 +134,11 @@ const translations = {
   week: { uz: 'Hafta', ru: 'Неделя', en: 'Week' },
   month: { uz: 'Oy', ru: 'Месяц', en: 'Month' },
   year: { uz: 'Yil', ru: 'Год', en: 'Year' },
+  custom: { uz: 'Maxsus', ru: 'Произвольный', en: 'Custom' },
+  fromDate: { uz: 'Boshlanish sanasi', ru: 'Дата начала', en: 'From date' },
+  toDate: { uz: 'Tugash sanasi', ru: 'Дата окончания', en: 'To date' },
+  selectDateRange: { uz: 'Boshlanish va tugash sanasini tanlang', ru: 'Выберите дату начала и окончания', en: 'Select start and end dates' },
+  customDateHint: { uz: 'Kerakli oraliqni tanlang va shu davr bo‘yicha Excel yuklab oling', ru: 'Выберите нужный диапазон и выгрузите Excel по этим датам', en: 'Choose the needed range and export Excel for those dates' },
   net: { uz: 'Sof natija', ru: 'Чистый итог', en: 'Net' },
   topCategories: { uz: 'Top kategoriyalar', ru: 'Топ категории', en: 'Top categories' },
 } as const satisfies Record<string, Dict>

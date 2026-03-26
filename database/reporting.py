@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import zipfile
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from io import BytesIO
 from typing import Any
@@ -45,13 +45,36 @@ def _period_start(period: str) -> tuple[datetime, str]:
     return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0), "month"
 
 
-def _period_label(period_type: str, start: datetime, now: datetime) -> str:
+def _period_bounds(
+    period: str,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> tuple[datetime, datetime, str]:
+    now = datetime.now()
+    if period == "custom":
+        if date_from is None or date_to is None:
+            raise ValueError("Custom period requires date_from and date_to")
+        start = datetime.combine(date_from, time.min)
+        end = datetime.combine(date_to, time.max)
+        if start > end:
+            raise ValueError("date_from must be before or equal to date_to")
+        return start, end, "custom"
+
+    start, period_type = _period_start(period)
+    return start, now, period_type
+
+
+def _period_label(period_type: str, start: datetime, now: datetime, end: datetime | None = None) -> str:
     if period_type == "day":
         return f"Today ({start:%d.%m.%Y})"
     if period_type == "week":
         return f"Week ({start:%d.%m} - {now:%d.%m.%Y})"
     if period_type == "year":
         return f"{start.year}"
+    if period_type == "custom":
+        range_end = end or now
+        return f"{start:%d.%m.%Y} - {range_end:%d.%m.%Y}"
     return start.strftime("%B %Y")
 
 
@@ -164,9 +187,16 @@ def _append_total_row(rows: list[list[Any]], label: str, numeric_cols: set[int])
     return rows + [totals] if has_values else rows
 
 
-async def collect_excel_report_payload(db: AsyncSession, user: User, period: str) -> dict[str, Any]:
+async def collect_excel_report_payload(
+    db: AsyncSession,
+    user: User,
+    period: str,
+    *,
+    date_from: date | None = None,
+    date_to: date | None = None,
+) -> dict[str, Any]:
     now = datetime.now()
-    start_date, period_type = _period_start(period)
+    start_date, end_date, period_type = _period_bounds(period, date_from=date_from, date_to=date_to)
     currency = normalize_currency(user.default_currency, "UZS")
     group_id = await get_active_group_id(db, user)
     group = await get_active_group(db, user)
@@ -180,6 +210,7 @@ async def collect_excel_report_payload(db: AsyncSession, user: User, period: str
         group=group,
         now=now,
         start_date=start_date,
+        end_date=end_date,
         period_type=period_type,
         currency=currency,
     )
@@ -195,11 +226,15 @@ async def collect_excel_report_payload_for_group(
     group=None,
     now: datetime | None = None,
     start_date: datetime | None = None,
+    end_date: datetime | None = None,
     period_type: str | None = None,
     currency: str | None = None,
 ) -> dict[str, Any]:
     now = now or datetime.now()
-    start_date, period_type = (start_date, period_type) if start_date and period_type else _period_start(period)
+    if start_date and end_date and period_type:
+        pass
+    else:
+        start_date, end_date, period_type = _period_bounds(period)
     currency = currency or normalize_currency(user.default_currency, "UZS")
     if group is None:
         group = (await db.execute(select(Group).where(Group.id == group_id))).scalar_one()
@@ -222,6 +257,7 @@ async def collect_excel_report_payload_for_group(
                     Transaction.user_id == user.id,
                     Transaction.group_id == group_id,
                     Transaction.transaction_date >= start_date,
+                    Transaction.transaction_date <= end_date,
                 )
             )
             .order_by(desc(Transaction.transaction_date))
@@ -285,7 +321,15 @@ async def collect_excel_report_payload_for_group(
             top_categories.append([f"{category.icon} {category.name}" if category else "-", float(amount_value), round(percent, 1)])
 
     debts = (
-        await db.execute(select(Debt).where(Debt.user_id == user.id, Debt.group_id == group_id).order_by(desc(Debt.created_at)))
+        await db.execute(
+            select(Debt)
+            .where(
+                Debt.user_id == user.id,
+                Debt.group_id == group_id,
+                Debt.created_at <= end_date,
+            )
+            .order_by(desc(Debt.created_at))
+        )
     ).scalars().all()
     debt_rows = []
     for debt in debts:
@@ -313,7 +357,11 @@ async def collect_excel_report_payload_for_group(
             await db.execute(
                 select(DebtRepayment, Debt)
                 .join(Debt, Debt.id == DebtRepayment.debt_id)
-                .where(DebtRepayment.debt_id.in_(debt_ids))
+                .where(
+                    DebtRepayment.debt_id.in_(debt_ids),
+                    DebtRepayment.repaid_at >= start_date,
+                    DebtRepayment.repaid_at <= end_date,
+                )
                 .order_by(desc(DebtRepayment.repaid_at))
             )
         ).all()
@@ -335,7 +383,7 @@ async def collect_excel_report_payload_for_group(
         ["Group", group.name],
         ["User", _display_name(user)],
         ["Role", "Super admin" if user.is_admin else ("Group admin" if admin_mode else "User")],
-        ["Period", _period_label(period_type, start_date, now)],
+        ["Period", _period_label(period_type, start_date, now, end_date)],
         ["Currency", currency],
         ["Generated at", now.strftime("%Y-%m-%d %H:%M:%S")],
         ["Main balance", float(balance_summary["total_balance"])],
@@ -380,7 +428,15 @@ async def collect_excel_report_payload_for_group(
         ]
 
         transfers = (
-            await db.execute(select(Transfer).where(Transfer.group_id == group_id, Transfer.created_at >= start_date).order_by(desc(Transfer.created_at)))
+            await db.execute(
+                select(Transfer)
+                .where(
+                    Transfer.group_id == group_id,
+                    Transfer.created_at >= start_date,
+                    Transfer.created_at <= end_date,
+                )
+                .order_by(desc(Transfer.created_at))
+            )
         ).scalars().all()
         user_ids = {transfer.sender_id for transfer in transfers} | {transfer.recipient_id for transfer in transfers}
         user_map = {}
@@ -406,7 +462,7 @@ async def collect_excel_report_payload_for_group(
             db,
             group_id=group_id,
             start_date=start_date.date(),
-            end_date=now.date(),
+            end_date=end_date.date(),
             target_currency=currency,
             include_inactive=True,
         )
@@ -451,7 +507,7 @@ async def collect_excel_report_payload_for_group(
                 .where(
                     AttendanceEntry.group_id == group_id,
                     AttendanceEntry.entry_date >= start_date.date(),
-                    AttendanceEntry.entry_date <= now.date(),
+                    AttendanceEntry.entry_date <= end_date.date(),
                 )
                 .order_by(desc(AttendanceEntry.entry_date), Worker.full_name.asc())
             )
@@ -468,7 +524,7 @@ async def collect_excel_report_payload_for_group(
                 .where(
                     WorkerAdvance.group_id == group_id,
                     WorkerAdvance.payment_date >= start_date.date(),
-                    WorkerAdvance.payment_date <= now.date(),
+                    WorkerAdvance.payment_date <= end_date.date(),
                 )
                 .order_by(desc(WorkerAdvance.payment_date))
             )
@@ -492,7 +548,7 @@ async def collect_excel_report_payload_for_group(
                 .where(
                     WorkerPayment.group_id == group_id,
                     WorkerPayment.payment_date >= start_date.date(),
-                    WorkerPayment.payment_date <= now.date(),
+                    WorkerPayment.payment_date <= end_date.date(),
                 )
                 .order_by(desc(WorkerPayment.payment_date))
             )
@@ -511,7 +567,14 @@ async def collect_excel_report_payload_for_group(
 
         audits = (
             await db.execute(
-                select(AuditLog).where(AuditLog.group_id == group_id, AuditLog.created_at >= start_date).order_by(desc(AuditLog.created_at)).limit(500)
+                select(AuditLog)
+                .where(
+                    AuditLog.group_id == group_id,
+                    AuditLog.created_at >= start_date,
+                    AuditLog.created_at <= end_date,
+                )
+                .order_by(desc(AuditLog.created_at))
+                .limit(500)
             )
         ).scalars().all()
         actor_ids = {item.actor_user_id for item in audits if item.actor_user_id}
@@ -526,7 +589,7 @@ async def collect_excel_report_payload_for_group(
 
     return {
         "group_name": group.name,
-        "period_label": _period_label(period_type, start_date, now),
+        "period_label": _period_label(period_type, start_date, now, end_date),
         "currency": currency,
         "summary": summary_rows,
         "top_categories": top_categories,
@@ -629,15 +692,18 @@ async def generate_excel_report(
     user: User,
     period: str,
     *,
+    date_from: date | None = None,
+    date_to: date | None = None,
     filename_prefix: str = "report",
     include_admin_sheets: bool | None = None,
     group_id_override: int | None = None,
 ) -> tuple[bytes, str]:
     if include_admin_sheets is None:
-        payload = await collect_excel_report_payload(db, user, period)
+        payload = await collect_excel_report_payload(db, user, period, date_from=date_from, date_to=date_to)
     else:
         group_id = int(group_id_override or await get_active_group_id(db, user))
         group = (await db.execute(select(Group).where(Group.id == group_id))).scalar_one()
+        start_date, end_date, period_type = _period_bounds(period, date_from=date_from, date_to=date_to)
         payload = await collect_excel_report_payload_for_group(
             db,
             user,
@@ -645,10 +711,14 @@ async def generate_excel_report(
             group_id=group_id,
             include_admin_sheets=include_admin_sheets,
             group=group,
+            start_date=start_date,
+            end_date=end_date,
+            period_type=period_type,
             currency=normalize_currency(user.default_currency, "UZS"),
         )
     content = build_excel_workbook(payload)
-    filename = f"{filename_prefix}_{_safe_filename_part(payload['group_name'])}_{period}_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
+    period_suffix = f"custom_{date_from:%Y%m%d}_{date_to:%Y%m%d}" if period == "custom" and date_from and date_to else period
+    filename = f"{filename_prefix}_{_safe_filename_part(payload['group_name'])}_{period_suffix}_{datetime.now():%Y%m%d_%H%M%S}.xlsx"
     return content, filename
 
 
@@ -657,18 +727,29 @@ async def generate_report_download(
     user: User,
     period: str,
     *,
+    date_from: date | None = None,
+    date_to: date | None = None,
     filename_prefix: str = "report",
 ) -> tuple[bytes, str, str]:
     group_id = await get_active_group_id(db, user)
     admin_mode = await is_group_admin(db, user, group_id)
     if not admin_mode:
-        content, filename = await generate_excel_report(db, user, period, filename_prefix=filename_prefix)
+        content, filename = await generate_excel_report(
+            db,
+            user,
+            period,
+            date_from=date_from,
+            date_to=date_to,
+            filename_prefix=filename_prefix,
+        )
         return content, filename, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
     overview_content, overview_filename = await generate_excel_report(
         db,
         user,
         period,
+        date_from=date_from,
+        date_to=date_to,
         filename_prefix=f"{filename_prefix}_group",
         include_admin_sheets=True,
     )
@@ -692,6 +773,8 @@ async def generate_report_download(
                 db,
                 member,
                 period,
+                date_from=date_from,
+                date_to=date_to,
                 filename_prefix=f"{filename_prefix}_{member_name}_{member.id}",
                 include_admin_sheets=False,
                 group_id_override=group_id,
@@ -702,5 +785,6 @@ async def generate_report_download(
 
     archive_stream.seek(0)
     group = await get_active_group(db, user)
-    filename = f"{filename_prefix}_{_safe_filename_part(group.name)}_{period}_{datetime.now():%Y%m%d_%H%M%S}.zip"
+    period_suffix = f"custom_{date_from:%Y%m%d}_{date_to:%Y%m%d}" if period == "custom" and date_from and date_to else period
+    filename = f"{filename_prefix}_{_safe_filename_part(group.name)}_{period_suffix}_{datetime.now():%Y%m%d_%H%M%S}.zip"
     return archive_stream.read(), filename, "application/zip"

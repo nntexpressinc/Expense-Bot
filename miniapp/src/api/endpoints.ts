@@ -312,15 +312,22 @@ export const getTransferRecipients = (params?: { search?: string; limit?: number
 export const getTransferDetails = (id: string) =>
   apiClient.get<Transfer>(`/transfers/${id}`).then((res) => res.data)
 
-export const getStatistics = (period?: 'day' | 'week' | 'month' | 'year') =>
-  apiClient.get<Statistics>('/statistics/', { params: { period } }).then((res) => res.data)
-export const exportStatisticsExcel = async (period?: 'day' | 'week' | 'month' | 'year') => {
-  const response = await apiClient.get('/statistics/export/excel', { params: { period }, responseType: 'blob' })
+export type StatisticsPeriod = 'day' | 'week' | 'month' | 'year' | 'custom'
+export type StatisticsParams = {
+  period?: StatisticsPeriod
+  date_from?: string
+  date_to?: string
+}
+
+export const getStatistics = (params?: StatisticsParams) =>
+  apiClient.get<Statistics>('/statistics/', { params }).then((res) => res.data)
+export const exportStatisticsExcel = async (params?: StatisticsParams) => {
+  const response = await apiClient.get('/statistics/export/excel', { params, responseType: 'blob' })
   const disposition = response.headers['content-disposition'] || ''
   const filenameMatch = disposition.match(/filename=\"?([^\";]+)\"?/)
   return {
     blob: response.data as Blob,
-    filename: filenameMatch?.[1] || `statistics-${period || 'month'}.xlsx`,
+    filename: filenameMatch?.[1] || `statistics-${params?.period || 'month'}.xlsx`,
   }
 }
 
