@@ -111,7 +111,7 @@ export const useTelegram = () => {
         window.clearInterval(timer)
         return
       }
-      if (Date.now() - startedAt > 4000) {
+      if (Date.now() - startedAt > 12000) {
         window.clearInterval(timer)
       }
     }, 120)

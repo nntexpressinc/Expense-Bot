@@ -28,7 +28,7 @@ function ScrollToTop() {
 }
 
 function App() {
-  const { webApp, user, authReady } = useTelegram()
+  const { webApp, authReady } = useTelegram()
   const [isReady, setIsReady] = useState(false)
   const allowDevPreview = import.meta.env.DEV && !webApp
   const { settings, theme, isLoading } = useAppSettings(allowDevPreview || authReady)
@@ -46,7 +46,7 @@ function App() {
     setIsReady(true)
   }, [theme, webApp])
 
-  if (!isReady || (webApp && !authReady && !allowDevPreview) || isLoading || (!user && !allowDevPreview)) {
+  if (!isReady || (webApp && !authReady && !allowDevPreview) || isLoading) {
     return (
       <div className="app-shell">
         <div className="app-content">
