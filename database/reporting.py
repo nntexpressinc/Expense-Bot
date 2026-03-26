@@ -92,6 +92,12 @@ def _safe_filename_part(value: str) -> str:
     return cleaned or "group"
 
 
+def _is_synthetic_opening_debt(debt: Debt) -> bool:
+    return (debt.reference or "") == "OPENING-DEBT-RANCHO" or (debt.description or "").startswith(
+        "Opening debt carry-over"
+    )
+
+
 def _type_label(tx_type_value: str, debt_kind: str | None = None) -> str:
     if tx_type_value == TransactionType.DEBT.value:
         return "Money borrowed" if debt_kind == "cash_loan" else "Buy on credit"
@@ -290,8 +296,6 @@ async def collect_excel_report_payload_for_group(
         converted = await convert_amount(db, amount, tx_currency, currency)
         if tx_type_value in {TransactionType.INCOME.value, TransactionType.TRANSFER_IN.value}:
             total_income += converted
-        elif tx_type_value == TransactionType.DEBT.value and debt_kind == "credit_purchase":
-            total_expense += converted
         elif tx_type_value in {TransactionType.EXPENSE.value, TransactionType.TRANSFER_OUT.value, TransactionType.DEBT_PAYMENT.value}:
             total_expense += converted
             if tx_type_value == TransactionType.EXPENSE.value and category_id:
@@ -331,15 +335,19 @@ async def collect_excel_report_payload_for_group(
             .order_by(desc(Debt.created_at))
         )
     ).scalars().all()
+    reportable_debts = [debt for debt in debts if not _is_synthetic_opening_debt(debt)]
+    debt_total = Decimal("0")
     debt_rows = []
-    for debt in debts:
+    for debt in reportable_debts:
+        converted_amount = await convert_amount(db, debt.amount, debt.currency, currency)
+        debt_total += converted_amount
         debt_rows.append(
             [
                 debt.created_at.strftime("%Y-%m-%d %H:%M"),
                 "Borrow money" if debt.kind == "cash_loan" else "Buy on credit",
                 debt.source_name or "-",
                 debt.source_contact or "-",
-                float(await convert_amount(db, debt.amount, debt.currency, currency)),
+                float(converted_amount),
                 currency,
                 float(await convert_amount(db, debt.remaining_amount, debt.currency, currency)),
                 float(await convert_amount(db, debt.used_amount, debt.currency, currency)),
@@ -366,15 +374,18 @@ async def collect_excel_report_payload_for_group(
             )
         ).all()
         for repayment, debt in repayments:
+            note = repayment.note or "-"
+            if note and "record=" in note and "source_row=" in note:
+                note = debt.description or note.split("|", 1)[0].strip()
             repayment_rows.append(
                 [
                     repayment.repaid_at.strftime("%Y-%m-%d %H:%M"),
-                    debt.description or str(debt.id),
+                    ("Historical debt carry-over" if _is_synthetic_opening_debt(debt) else (debt.description or str(debt.id))),
                     debt.source_name or "-",
                     float(repayment.amount),
                     repayment.currency,
                     float(await convert_amount(db, repayment.amount, repayment.currency, currency)),
-                    repayment.note or "-",
+                    note,
                 ]
             )
 
@@ -391,11 +402,12 @@ async def collect_excel_report_payload_for_group(
         ["Transfer balance", float(balance_summary["received_balance"])],
         ["Total income", float(total_income)],
         ["Total expense", float(total_expense)],
+        ["Debt taken", float(debt_total)],
         ["Net result", float(total_income - total_expense)],
         ["Debt balance", float(balance_summary["debt_balance"])],
         ["Outstanding debt", float(balance_summary["outstanding_debt_balance"])],
         ["Transactions count", len(transaction_rows)],
-        ["Debts count", len(debt_rows)],
+        ["Debts count", len(reportable_debts)],
         ["Debt repayments", len(repayment_rows)],
     ]
 
@@ -626,7 +638,6 @@ def build_excel_workbook(payload: dict[str, Any]) -> bytes:
         [row["date"], row["type"], row["category"], row["funding"], row["source"], row["amount"], row["currency"], row["converted"], row["description"]]
         for row in payload["transactions"]
     ] or [["-", "-", "-", "-", "-", 0, payload["currency"], 0, "-"]]
-    tx_rows = _append_total_row(tx_rows, "Total", {6, 8})
     _write_table(
         tx_ws,
         start_row=3,

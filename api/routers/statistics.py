@@ -164,8 +164,6 @@ async def get_statistics(
 
         if tx_type_val == TransactionType.INCOME.value:
             total_income += converted
-        elif tx_type_val == TransactionType.DEBT.value and debt_kind == 'credit_purchase':
-            total_expense += converted
         elif tx_type_val in {
             TransactionType.EXPENSE.value,
             TransactionType.TRANSFER_OUT.value,

@@ -52,8 +52,8 @@ def test_build_excel_workbook_basic_sheets():
     assert workbook.sheetnames == ["Summary", "Transactions", "Debts", "Debt Repayments"]
     assert workbook["Summary"]["A1"].value == "Financial Monitoring Report"
     assert workbook["Transactions"]["A4"].value == "2026-03-24 10:00"
-    assert workbook["Transactions"]["A5"].value == "Total"
-    assert workbook["Transactions"]["F5"].value == 30
+    assert workbook["Transactions"]["F4"].value == 30
+    assert workbook["Transactions"]["A5"].value is None
     assert workbook["Debt Repayments"]["A5"].value == "Total"
 
 
