@@ -75,12 +75,10 @@ export default function Dashboard() {
       <Card>
         <SectionTitle title={t('quickActions', language)} />
         <div className="grid grid-cols-1 gap-3">
-          {settings?.is_group_admin || settings?.is_admin ? (
-            <Link to="/team" className="surface-card-muted px-4 py-4">
-              <p className="text-sm font-semibold text-[var(--text)]">{t('manageWorkers', language)}</p>
-              <p className="mt-1 text-sm text-[var(--text-soft)]">{t('workers', language)}</p>
-            </Link>
-          ) : null}
+          <Link to="/team" className="surface-card-muted px-4 py-4">
+            <p className="text-sm font-semibold text-[var(--text)]">{t('manageWorkers', language)}</p>
+            <p className="mt-1 text-sm text-[var(--text-soft)]">{t('workers', language)}</p>
+          </Link>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Link to="/statistics" className="surface-card-muted px-4 py-4">
               <p className="text-sm font-semibold text-[var(--text)]">{t('statistics', language)}</p>

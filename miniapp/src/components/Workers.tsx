@@ -67,23 +67,24 @@ export default function Workers() {
   const [paymentAmount, setPaymentAmount] = useState<Record<string, string>>({})
 
   const month = useMemo(monthBounds, [])
+  const [rangeStart, setRangeStart] = useState(month.start)
+  const [rangeEnd, setRangeEnd] = useState(month.end)
   const copy = workerCopy[language]
-  const canManageWorkers = Boolean(settings?.is_group_admin || settings?.is_admin)
+  const hasValidDateRange = Boolean(rangeStart && rangeEnd && rangeStart <= rangeEnd)
 
   const workersQuery = useQuery({
     queryKey: ['workers'],
     queryFn: () => listWorkers({ include_inactive: false }),
-    enabled: canManageWorkers,
   })
   const summaryQuery = useQuery({
-    queryKey: ['workers-summary', month.start, month.end],
-    queryFn: () => getWorkersSummary({ start_date: month.start, end_date: month.end }),
-    enabled: canManageWorkers,
+    queryKey: ['workers-summary', rangeStart, rangeEnd],
+    queryFn: () => getWorkersSummary({ start_date: rangeStart, end_date: rangeEnd }),
+    enabled: hasValidDateRange,
   })
   const attendanceQuery = useQuery({
-    queryKey: ['workers-attendance', month.start, month.end],
-    queryFn: () => listAttendanceEntries({ start_date: month.start, end_date: month.end, limit: 300 }),
-    enabled: canManageWorkers,
+    queryKey: ['workers-attendance', rangeStart, rangeEnd],
+    queryFn: () => listAttendanceEntries({ start_date: rangeStart, end_date: rangeEnd, limit: 300 }),
+    enabled: hasValidDateRange,
   })
 
   const refresh = async () => {
@@ -157,14 +158,6 @@ export default function Workers() {
     onError: handleError,
   })
 
-  if (!canManageWorkers) {
-    return (
-      <Page title={t('team', language)} subtitle={settings?.active_group_name || '-'}>
-        <EmptyState title={t('notAllowed', language)} />
-      </Page>
-    )
-  }
-
   if ((workersQuery.isLoading && !workersQuery.data) || (summaryQuery.isLoading && !summaryQuery.data)) {
     return <LoadingState label={t('loading', language)} />
   }
@@ -233,7 +226,7 @@ export default function Workers() {
   return (
     <Page title={t('team', language)} subtitle={settings?.active_group_name || '-'}>
       <Card>
-        <SectionTitle title={t('workers', language)} hint={`${month.start} - ${month.end}`} />
+        <SectionTitle title={t('workers', language)} hint={`${rangeStart} - ${rangeEnd}`} />
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div className="surface-card-muted px-4 py-4">
             <p className="text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('workers', language)}</p>
@@ -251,6 +244,33 @@ export default function Workers() {
             </p>
           </div>
         </div>
+      </Card>
+
+      <Card>
+        <SectionTitle title={t('dateRange', language)} hint={t('choosePeriod', language)} />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
+          <div>
+            <p className="mb-2 text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('fromDate', language)}</p>
+            <input className="field" type="date" value={rangeStart} onChange={(e) => setRangeStart(e.target.value)} />
+          </div>
+          <div>
+            <p className="mb-2 text-xs uppercase tracking-[0.16em] text-[var(--text-muted)]">{t('toDate', language)}</p>
+            <input className="field" type="date" value={rangeEnd} onChange={(e) => setRangeEnd(e.target.value)} />
+          </div>
+          <div className="flex items-end">
+            <button
+              type="button"
+              className="secondary-button w-full sm:min-w-[132px]"
+              onClick={() => {
+                setRangeStart(month.start)
+                setRangeEnd(month.end)
+              }}
+            >
+              {t('thisMonth', language)}
+            </button>
+          </div>
+        </div>
+        {!hasValidDateRange ? <p className="mt-3 text-sm text-[var(--danger)]">{t('selectDateRange', language)}</p> : null}
       </Card>
 
       <Card>
@@ -396,8 +416,10 @@ export default function Workers() {
       </Card>
 
       <Card>
-        <SectionTitle title={t('attendanceSummary', language)} hint={`${month.start} - ${month.end}`} />
-        {attendanceSummaryItems.length ? (
+        <SectionTitle title={t('attendanceSummary', language)} hint={`${rangeStart} - ${rangeEnd}`} />
+        {!hasValidDateRange ? (
+          <EmptyState title={t('selectDateRange', language)} />
+        ) : attendanceSummaryItems.length ? (
           <div className="space-y-2">
             {attendanceSummaryItems.map(({ worker, summary }) => (
               <div key={worker.id} className="surface-card-muted px-4 py-3">
@@ -427,8 +449,10 @@ export default function Workers() {
       </Card>
 
       <Card>
-        <SectionTitle title={t('recentAttendance', language)} hint={`${month.start} - ${month.end}`} />
-        {attendanceItems.length ? (
+        <SectionTitle title={t('recentAttendance', language)} hint={`${rangeStart} - ${rangeEnd}`} />
+        {!hasValidDateRange ? (
+          <EmptyState title={t('selectDateRange', language)} />
+        ) : attendanceItems.length ? (
           <div className="space-y-2">
             {attendanceItems.map((entry) => (
               <div key={entry.id} className="surface-card-muted px-4 py-3">

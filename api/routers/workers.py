@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from api.routers.auth import get_current_user
 from database.audit import write_audit_log
 from database.finance import get_spendable_main_balance, normalize_currency
-from database.group_context import get_active_group_id, is_group_admin
+from database.group_context import get_active_group_id, user_has_group_access
 from database.models import AttendanceEntry, Transaction, TransactionType, User, Worker, WorkerAdvance, WorkerPayment
 from database.session import get_db
 from database.workers import calculate_group_payroll_summary, calculate_worker_period_summary
@@ -32,9 +32,9 @@ def _t(lang: str, uz: str, ru: str, en: str) -> str:
     return uz
 
 
-async def _require_workers_admin(db: AsyncSession, current_user: User, group_id: int) -> None:
+async def _require_workers_access(db: AsyncSession, current_user: User, group_id: int) -> None:
     lang = _lang(current_user.language_code)
-    if not await is_group_admin(db, current_user, group_id):
+    if not await user_has_group_access(db, current_user.id, group_id):
         raise HTTPException(status_code=403, detail=_t(lang, "Ruxsat yo'q", "Доступ запрещён", "Access denied"))
 
 
@@ -102,7 +102,7 @@ async def list_workers(
     db: AsyncSession = Depends(get_db),
 ):
     group_id = await get_active_group_id(db, current_user)
-    await _require_workers_admin(db, current_user, group_id)
+    await _require_workers_access(db, current_user, group_id)
     query = select(Worker).where(Worker.group_id == group_id)
     if not include_inactive:
         query = query.where(Worker.is_active.is_(True))
@@ -148,7 +148,7 @@ async def list_attendance_entries(
     db: AsyncSession = Depends(get_db),
 ):
     group_id = await get_active_group_id(db, current_user)
-    await _require_workers_admin(db, current_user, group_id)
+    await _require_workers_access(db, current_user, group_id)
 
     today = date.today()
     resolved_start = start_date or today.replace(day=1)
@@ -190,7 +190,7 @@ async def create_worker(
 ):
     lang = _lang(current_user.language_code)
     group_id = await get_active_group_id(db, current_user)
-    if not await is_group_admin(db, current_user, group_id):
+    if not await user_has_group_access(db, current_user.id, group_id):
         raise HTTPException(status_code=403, detail=_t(lang, "Ruxsat yo'q", "Доступ запрещён", "Access denied"))
 
     worker = Worker(
@@ -239,8 +239,9 @@ async def record_attendance(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    lang = _lang(current_user.language_code)
     group_id = await get_active_group_id(db, current_user)
-    await _require_workers_admin(db, current_user, group_id)
+    await _require_workers_access(db, current_user, group_id)
 
     worker = (
         await db.execute(select(Worker).where(Worker.id == worker_id, Worker.group_id == group_id))
@@ -416,8 +417,9 @@ async def record_worker_advance(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    lang = _lang(current_user.language_code)
     group_id = await get_active_group_id(db, current_user)
-    await _require_workers_admin(db, current_user, group_id)
+    await _require_workers_access(db, current_user, group_id)
     worker = (await db.execute(select(Worker).where(Worker.id == worker_id, Worker.group_id == group_id))).scalar_one_or_none()
     if not worker:
         raise HTTPException(status_code=404, detail=_t(lang, "Ishchi topilmadi", "Сотрудник не найден", "Worker not found"))
@@ -431,8 +433,9 @@ async def record_worker_payment(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    lang = _lang(current_user.language_code)
     group_id = await get_active_group_id(db, current_user)
-    await _require_workers_admin(db, current_user, group_id)
+    await _require_workers_access(db, current_user, group_id)
     worker = (await db.execute(select(Worker).where(Worker.id == worker_id, Worker.group_id == group_id))).scalar_one_or_none()
     if not worker:
         raise HTTPException(status_code=404, detail=_t(lang, "Ishchi topilmadi", "Сотрудник не найден", "Worker not found"))
@@ -448,7 +451,7 @@ async def get_payroll_summary(
     db: AsyncSession = Depends(get_db),
 ):
     group_id = await get_active_group_id(db, current_user)
-    await _require_workers_admin(db, current_user, group_id)
+    await _require_workers_access(db, current_user, group_id)
     summary = await calculate_group_payroll_summary(
         db,
         group_id=group_id,
@@ -470,7 +473,7 @@ async def get_worker_summary(
 ):
     lang = _lang(current_user.language_code)
     group_id = await get_active_group_id(db, current_user)
-    await _require_workers_admin(db, current_user, group_id)
+    await _require_workers_access(db, current_user, group_id)
     worker = (await db.execute(select(Worker).where(Worker.id == worker_id, Worker.group_id == group_id))).scalar_one_or_none()
     if not worker:
         raise HTTPException(status_code=404, detail=_t(lang, "Ishchi topilmadi", "Сотрудник не найден", "Worker not found"))

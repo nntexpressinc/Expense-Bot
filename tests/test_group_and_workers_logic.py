@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException
 
 from api.routers.groups import get_group_user_overview
-from api.routers.workers import WorkerMoneyRequest, _create_worker_money_record, _require_workers_admin
+from api.routers.workers import WorkerMoneyRequest, _create_worker_money_record, _require_workers_access
 from database.category_labels import present_category_name
 from database.finance import apply_debt_repayment, calculate_available_debt_source_native, normalize_debt_kind
 from database.group_context import normalize_group_role, normalize_lang, normalize_theme
@@ -206,16 +206,16 @@ async def test_worker_payment_rejects_amount_above_payable(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_workers_permission_requires_group_admin(monkeypatch):
-    async def fake_is_group_admin(*_args, **_kwargs):
+async def test_workers_permission_requires_group_membership(monkeypatch):
+    async def fake_has_group_access(*_args, **_kwargs):
         return False
 
-    monkeypatch.setattr("api.routers.workers.is_group_admin", fake_is_group_admin)
+    monkeypatch.setattr("api.routers.workers.user_has_group_access", fake_has_group_access)
 
     with pytest.raises(HTTPException, match="Access denied|Доступ запрещён"):
-        await _require_workers_admin(
+        await _require_workers_access(
             db=SimpleNamespace(),
-            current_user=SimpleNamespace(language_code="en"),
+            current_user=SimpleNamespace(id=1, language_code="en"),
             group_id=1,
         )
 

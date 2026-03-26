@@ -130,6 +130,8 @@ const translations = {
   requestFailed: { uz: "So'rov bajarilmadi", ru: 'РќРµ СѓРґР°Р»РѕСЃСЊ РІС‹РїРѕР»РЅРёС‚СЊ Р·Р°РїСЂРѕСЃ', en: 'Request failed' },
   remove: { uz: 'Olib tashlash', ru: 'РЈРґР°Р»РёС‚СЊ', en: 'Remove' },
   choosePeriod: { uz: 'Davrni tanlang', ru: 'Р’С‹Р±РµСЂРёС‚Рµ РїРµСЂРёРѕРґ', en: 'Choose period' },
+  dateRange: { uz: 'Sana oralig‘i', ru: 'Диапазон дат', en: 'Date range' },
+  thisMonth: { uz: 'Shu oy', ru: 'Этот месяц', en: 'This month' },
   day: { uz: 'Kun', ru: 'Р”РµРЅСЊ', en: 'Day' },
   week: { uz: 'Hafta', ru: 'РќРµРґРµР»СЏ', en: 'Week' },
   month: { uz: 'Oy', ru: 'РњРµСЃСЏС†', en: 'Month' },

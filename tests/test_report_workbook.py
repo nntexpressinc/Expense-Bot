@@ -49,12 +49,14 @@ def _sample_payload(admin_mode: bool):
 def test_build_excel_workbook_basic_sheets():
     workbook = load_workbook(BytesIO(build_excel_workbook(_sample_payload(admin_mode=False))))
 
-    assert workbook.sheetnames == ["Summary", "Transactions", "Debts", "Debt Repayments"]
+    assert workbook.sheetnames == ["Summary", "Transactions", "Debts", "Debt Repayments", "Workers", "Attendance", "Advances", "Worker Payments"]
     assert workbook["Summary"]["A1"].value == "Financial Monitoring Report"
     assert workbook["Transactions"]["A4"].value == "2026-03-24 10:00"
     assert workbook["Transactions"]["F4"].value == 30
     assert workbook["Transactions"]["A5"].value is None
     assert workbook["Debt Repayments"]["A5"].value == "Total"
+    assert workbook["Attendance"]["A4"].value == "2026-03-24"
+    assert workbook["Worker Payments"]["A5"].value == "Total"
 
 
 def test_build_excel_workbook_admin_monitoring_sheets():

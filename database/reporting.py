@@ -438,15 +438,123 @@ async def collect_excel_report_payload_for_group(
         ["Debt repayments", len(repayment_rows)],
     ])
 
-    admin_payload: dict[str, list[list[Any]]] = {
-        "users": [],
-        "transfers": [],
+    worker_payload: dict[str, list[list[Any]]] = {
         "workers": [],
         "attendance": [],
         "advances": [],
         "worker_payments": [],
+    }
+    admin_payload: dict[str, list[list[Any]]] = {
+        "users": [],
+        "transfers": [],
         "audit": [],
     }
+    payroll = await calculate_group_payroll_summary(
+        db,
+        group_id=group_id,
+        start_date=start_date.date(),
+        end_date=end_date.date(),
+        target_currency=currency,
+        include_inactive=True,
+    )
+    summary_rows.extend(
+        [
+            ["Workers count", len(payroll["workers"])],
+            ["Payroll accrued", payroll["totals"]["base_amount"]],
+            ["Payroll advances", payroll["totals"]["advance_amount"]],
+            ["Payroll paid", payroll["totals"]["paid_amount"]],
+            ["Payroll payable", payroll["totals"]["payable_amount"]],
+        ]
+    )
+
+    worker_map = {item["worker_id"]: item for item in payroll["workers"]}
+    workers = (await db.execute(select(Worker).where(Worker.group_id == group_id).order_by(Worker.full_name.asc()))).scalars().all()
+    worker_payload["workers"] = [
+        [
+            worker.full_name,
+            worker.role_name or "-",
+            worker.payment_type,
+            worker_map.get(str(worker.id), {}).get("rate", float(worker.rate)),
+            currency,
+            "Yes" if worker.is_active else "No",
+            worker.start_date.isoformat(),
+            worker_map.get(str(worker.id), {}).get("quantity", 0),
+            worker_map.get(str(worker.id), {}).get("base_amount", 0),
+            worker_map.get(str(worker.id), {}).get("advance_amount", 0),
+            worker_map.get(str(worker.id), {}).get("paid_amount", 0),
+            worker_map.get(str(worker.id), {}).get("payable_amount", 0),
+            worker_map.get(str(worker.id), {}).get("status", "-"),
+            worker.phone or "-",
+            worker.notes or "-",
+        ]
+        for worker in workers
+    ]
+
+    attendance = (
+        await db.execute(
+            select(AttendanceEntry, Worker)
+            .join(Worker, Worker.id == AttendanceEntry.worker_id)
+            .where(
+                AttendanceEntry.group_id == group_id,
+                AttendanceEntry.entry_date >= start_date.date(),
+                AttendanceEntry.entry_date <= end_date.date(),
+            )
+            .order_by(desc(AttendanceEntry.entry_date), Worker.full_name.asc())
+        )
+    ).all()
+    worker_payload["attendance"] = [
+        [entry.entry_date.isoformat(), worker.full_name, worker.payment_type, entry.status, float(entry.units), entry.comment or "-"]
+        for entry, worker in attendance
+    ]
+
+    advances = (
+        await db.execute(
+            select(WorkerAdvance, Worker)
+            .join(Worker, Worker.id == WorkerAdvance.worker_id)
+            .where(
+                WorkerAdvance.group_id == group_id,
+                WorkerAdvance.payment_date >= start_date.date(),
+                WorkerAdvance.payment_date <= end_date.date(),
+            )
+            .order_by(desc(WorkerAdvance.payment_date))
+        )
+    ).all()
+    worker_payload["advances"] = [
+        [
+            advance.payment_date.isoformat(),
+            worker.full_name,
+            float(advance.amount),
+            advance.currency,
+            float(await convert_amount(db, advance.amount, advance.currency, currency)),
+            advance.note or "-",
+        ]
+        for advance, worker in advances
+    ]
+
+    payments = (
+        await db.execute(
+            select(WorkerPayment, Worker)
+            .join(Worker, Worker.id == WorkerPayment.worker_id)
+            .where(
+                WorkerPayment.group_id == group_id,
+                WorkerPayment.payment_date >= start_date.date(),
+                WorkerPayment.payment_date <= end_date.date(),
+            )
+            .order_by(desc(WorkerPayment.payment_date))
+        )
+    ).all()
+    worker_payload["worker_payments"] = [
+        [
+            payment.payment_date.isoformat(),
+            worker.full_name,
+            float(payment.amount),
+            payment.currency,
+            float(await convert_amount(db, payment.amount, payment.currency, currency)),
+            payment.note or "-",
+        ]
+        for payment, worker in payments
+    ]
+
     if admin_mode:
         members = (
             await db.execute(
@@ -496,113 +604,7 @@ async def collect_excel_report_payload_for_group(
             ]
             for transfer in transfers
         ]
-
-        payroll = await calculate_group_payroll_summary(
-            db,
-            group_id=group_id,
-            start_date=start_date.date(),
-            end_date=end_date.date(),
-            target_currency=currency,
-            include_inactive=True,
-        )
-        summary_rows.extend(
-            [
-                ["Transfers count", len(admin_payload["transfers"])],
-                ["Workers count", len(payroll["workers"])],
-                ["Payroll accrued", payroll["totals"]["base_amount"]],
-                ["Payroll advances", payroll["totals"]["advance_amount"]],
-                ["Payroll paid", payroll["totals"]["paid_amount"]],
-                ["Payroll payable", payroll["totals"]["payable_amount"]],
-            ]
-        )
-
-        worker_map = {item["worker_id"]: item for item in payroll["workers"]}
-        workers = (await db.execute(select(Worker).where(Worker.group_id == group_id).order_by(Worker.full_name.asc()))).scalars().all()
-        admin_payload["workers"] = [
-            [
-                worker.full_name,
-                worker.role_name or "-",
-                worker.payment_type,
-                worker_map.get(str(worker.id), {}).get("rate", float(worker.rate)),
-                currency,
-                "Yes" if worker.is_active else "No",
-                worker.start_date.isoformat(),
-                worker_map.get(str(worker.id), {}).get("quantity", 0),
-                worker_map.get(str(worker.id), {}).get("base_amount", 0),
-                worker_map.get(str(worker.id), {}).get("advance_amount", 0),
-                worker_map.get(str(worker.id), {}).get("paid_amount", 0),
-                worker_map.get(str(worker.id), {}).get("payable_amount", 0),
-                worker_map.get(str(worker.id), {}).get("status", "-"),
-                worker.phone or "-",
-                worker.notes or "-",
-            ]
-            for worker in workers
-        ]
-
-        attendance = (
-            await db.execute(
-                select(AttendanceEntry, Worker)
-                .join(Worker, Worker.id == AttendanceEntry.worker_id)
-                .where(
-                    AttendanceEntry.group_id == group_id,
-                    AttendanceEntry.entry_date >= start_date.date(),
-                    AttendanceEntry.entry_date <= end_date.date(),
-                )
-                .order_by(desc(AttendanceEntry.entry_date), Worker.full_name.asc())
-            )
-        ).all()
-        admin_payload["attendance"] = [
-            [entry.entry_date.isoformat(), worker.full_name, worker.payment_type, entry.status, float(entry.units), entry.comment or "-"]
-            for entry, worker in attendance
-        ]
-
-        advances = (
-            await db.execute(
-                select(WorkerAdvance, Worker)
-                .join(Worker, Worker.id == WorkerAdvance.worker_id)
-                .where(
-                    WorkerAdvance.group_id == group_id,
-                    WorkerAdvance.payment_date >= start_date.date(),
-                    WorkerAdvance.payment_date <= end_date.date(),
-                )
-                .order_by(desc(WorkerAdvance.payment_date))
-            )
-        ).all()
-        admin_payload["advances"] = [
-            [
-                advance.payment_date.isoformat(),
-                worker.full_name,
-                float(advance.amount),
-                advance.currency,
-                float(await convert_amount(db, advance.amount, advance.currency, currency)),
-                advance.note or "-",
-            ]
-            for advance, worker in advances
-        ]
-
-        payments = (
-            await db.execute(
-                select(WorkerPayment, Worker)
-                .join(Worker, Worker.id == WorkerPayment.worker_id)
-                .where(
-                    WorkerPayment.group_id == group_id,
-                    WorkerPayment.payment_date >= start_date.date(),
-                    WorkerPayment.payment_date <= end_date.date(),
-                )
-                .order_by(desc(WorkerPayment.payment_date))
-            )
-        ).all()
-        admin_payload["worker_payments"] = [
-            [
-                payment.payment_date.isoformat(),
-                worker.full_name,
-                float(payment.amount),
-                payment.currency,
-                float(await convert_amount(db, payment.amount, payment.currency, currency)),
-                payment.note or "-",
-            ]
-            for payment, worker in payments
-        ]
+        summary_rows.append(["Transfers count", len(admin_payload["transfers"])])
 
         audits = (
             await db.execute(
@@ -636,6 +638,7 @@ async def collect_excel_report_payload_for_group(
         "debts": debt_rows,
         "debt_repayments": repayment_rows,
         "admin_mode": admin_mode,
+        **worker_payload,
         **admin_payload,
     }
 
@@ -700,24 +703,27 @@ def build_excel_workbook(payload: dict[str, Any]) -> bytes:
         numeric_cols={4, 6},
     )
 
+    sheets = [
+        ("Workers", ["Name", "Role", "Payment Type", "Rate", "Currency", "Active", "Start Date", "Quantity", "Accrued", "Advance", "Paid", "Payable", "Status", "Phone", "Notes"], payload["workers"], [22, 18, 16, 14, 10, 10, 14, 12, 14, 14, 14, 14, 14, 16, 28], {4, 8, 9, 10, 11, 12}),
+        ("Attendance", ["Date", "Worker", "Payment Type", "Status", "Units", "Comment"], payload["attendance"], [14, 24, 16, 16, 12, 34], {5}),
+        ("Advances", ["Date", "Worker", "Amount", "Currency", "Report Amount", "Note"], payload["advances"], [14, 24, 14, 10, 18, 36], {3, 5}),
+        ("Worker Payments", ["Date", "Worker", "Amount", "Currency", "Report Amount", "Note"], payload["worker_payments"], [14, 24, 14, 10, 18, 36], {3, 5}),
+    ]
     if payload["admin_mode"]:
         sheets = [
             ("Users", ["Name", "Username", "Role", "Active", "Language", "Currency", "Joined At"], payload["users"], [24, 20, 14, 10, 12, 10, 20], set()),
             ("Transfers", ["Date", "Sender", "Recipient", "Amount", "Currency", "Remaining", "Spent", "Status", "Description"], payload["transfers"], [20, 24, 24, 14, 10, 14, 14, 14, 36], {4, 6, 7}),
-            ("Workers", ["Name", "Role", "Payment Type", "Rate", "Currency", "Active", "Start Date", "Quantity", "Accrued", "Advance", "Paid", "Payable", "Status", "Phone", "Notes"], payload["workers"], [22, 18, 16, 14, 10, 10, 14, 12, 14, 14, 14, 14, 14, 16, 28], {4, 8, 9, 10, 11, 12}),
-            ("Attendance", ["Date", "Worker", "Payment Type", "Status", "Units", "Comment"], payload["attendance"], [14, 24, 16, 16, 12, 34], {5}),
-            ("Advances", ["Date", "Worker", "Amount", "Currency", "Report Amount", "Note"], payload["advances"], [14, 24, 14, 10, 18, 36], {3, 5}),
-            ("Worker Payments", ["Date", "Worker", "Amount", "Currency", "Report Amount", "Note"], payload["worker_payments"], [14, 24, 14, 10, 18, 36], {3, 5}),
+            *sheets,
             ("Audit Log", ["Date", "Actor", "Action", "Entity", "Entity ID", "Payload"], payload["audit"], [20, 22, 28, 18, 20, 56], set()),
         ]
-        for title, headers, rows, widths, numeric_cols in sheets:
-            ws = wb.create_sheet(title)
-            _write_sheet_title(ws, title, len(headers), styles)
-            fallback = [["-"] * len(headers)]
-            table_rows = rows or fallback
-            if rows and numeric_cols:
-                table_rows = _append_total_row(table_rows, "Total", numeric_cols)
-            _write_table(ws, start_row=3, headers=headers, rows=table_rows, widths=widths, numeric_cols=numeric_cols)
+    for title, headers, rows, widths, numeric_cols in sheets:
+        ws = wb.create_sheet(title)
+        _write_sheet_title(ws, title, len(headers), styles)
+        fallback = [["-"] * len(headers)]
+        table_rows = rows or fallback
+        if rows and numeric_cols:
+            table_rows = _append_total_row(table_rows, "Total", numeric_cols)
+        _write_table(ws, start_row=3, headers=headers, rows=table_rows, widths=widths, numeric_cols=numeric_cols)
 
     stream = BytesIO()
     wb.save(stream)
