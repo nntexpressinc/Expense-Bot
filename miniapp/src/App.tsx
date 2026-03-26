@@ -33,6 +33,7 @@ function App() {
   const allowDevPreview = import.meta.env.DEV && !webApp
   const { settings, theme, isLoading } = useAppSettings(allowDevPreview || authReady)
   const canManageAdmin = Boolean(settings?.is_group_admin || settings?.is_admin)
+  const routerBase = import.meta.env.BASE_URL.replace(/\/$/, '') || '/'
 
   useEffect(() => {
     if (webApp) {
@@ -56,7 +57,7 @@ function App() {
   }
 
   return (
-    <BrowserRouter>
+    <BrowserRouter basename={routerBase}>
       <div className="app-shell">
         <div className="app-content">
           <ScrollToTop />
