@@ -290,18 +290,23 @@ async def collect_excel_report_payload_for_group(
     total_income = Decimal("0")
     total_expense = Decimal("0")
     category_totals: dict[int, Decimal] = {}
+    income_category_totals: dict[str, Decimal] = {}
     transaction_rows: list[dict[str, Any]] = []
     for tx_id, tx_date, tx_type, debt_kind, amount, tx_currency, category_id, description, funding_source in tx_rows:
         tx_type_value = tx_type.value if hasattr(tx_type, "value") else str(tx_type)
+        category = category_map.get(category_id) if category_id else None
         converted = await convert_amount(db, amount, tx_currency, currency)
         if tx_type_value in {TransactionType.INCOME.value, TransactionType.TRANSFER_IN.value}:
             total_income += converted
+            income_label = "Transfers received" if tx_type_value == TransactionType.TRANSFER_IN.value else (
+                category.name if category else _type_label(tx_type_value, debt_kind)
+            )
+            income_category_totals[income_label] = income_category_totals.get(income_label, Decimal("0")) + converted
         elif tx_type_value in {TransactionType.EXPENSE.value, TransactionType.TRANSFER_OUT.value, TransactionType.DEBT_PAYMENT.value}:
             total_expense += converted
             if tx_type_value == TransactionType.EXPENSE.value and category_id:
                 category_totals[category_id] = category_totals.get(category_id, Decimal("0")) + converted
 
-        category = category_map.get(category_id) if category_id else None
         transaction_rows.append(
             {
                 "date": tx_date.strftime("%Y-%m-%d %H:%M"),
@@ -323,6 +328,12 @@ async def collect_excel_report_payload_for_group(
             category = category_map.get(category_id)
             percent = float((amount_value / total_expense * 100) if total_expense > 0 else Decimal("0"))
             top_categories.append([f"{category.icon} {category.name}" if category else "-", float(amount_value), round(percent, 1)])
+
+    income_breakdown_rows = []
+    if income_category_totals:
+        ordered_income = sorted(income_category_totals.items(), key=lambda item: item[1], reverse=True)
+        for label, amount_value in ordered_income[:5]:
+            income_breakdown_rows.append([f"Income: {label}", float(amount_value)])
 
     debts = (
         await db.execute(
@@ -400,7 +411,10 @@ async def collect_excel_report_payload_for_group(
         ["Main balance", float(balance_summary["total_balance"])],
         ["Own balance", float(balance_summary["own_balance"])],
         ["Transfer balance", float(balance_summary["received_balance"])],
-        ["Total income", float(total_income)],
+    ]
+    summary_rows.extend(income_breakdown_rows)
+    summary_rows.extend([
+        ["All income", float(total_income)],
         ["Total expense", float(total_expense)],
         ["Debt taken", float(debt_total)],
         ["Net result", float(total_income - total_expense)],
@@ -409,7 +423,7 @@ async def collect_excel_report_payload_for_group(
         ["Transactions count", len(transaction_rows)],
         ["Debts count", len(reportable_debts)],
         ["Debt repayments", len(repayment_rows)],
-    ]
+    ])
 
     admin_payload: dict[str, list[list[Any]]] = {
         "users": [],
