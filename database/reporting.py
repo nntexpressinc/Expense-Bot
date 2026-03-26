@@ -111,6 +111,18 @@ def _type_label(tx_type_value: str, debt_kind: str | None = None) -> str:
     return mapping.get(tx_type_value, tx_type_value)
 
 
+def _normalize_income_label(label: str) -> str:
+    normalized = (label or "").strip()
+    lower = normalized.lower()
+    if lower.startswith("nosirdan income"):
+        return "Nosirdan income"
+    if lower.startswith("texnikalardan income"):
+        return "Texnikalardan income"
+    if lower == "transfers received":
+        return "Transfers received"
+    return normalized
+
+
 def _styles() -> dict[str, Any]:
     thin = Side(style="thin", color="D1D5DB")
     return {
@@ -301,6 +313,7 @@ async def collect_excel_report_payload_for_group(
             income_label = "Transfers received" if tx_type_value == TransactionType.TRANSFER_IN.value else (
                 category.name if category else _type_label(tx_type_value, debt_kind)
             )
+            income_label = _normalize_income_label(income_label)
             income_category_totals[income_label] = income_category_totals.get(income_label, Decimal("0")) + converted
         elif tx_type_value in {TransactionType.EXPENSE.value, TransactionType.TRANSFER_OUT.value, TransactionType.DEBT_PAYMENT.value}:
             total_expense += converted
