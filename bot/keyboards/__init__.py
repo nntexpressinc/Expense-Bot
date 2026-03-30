@@ -16,15 +16,8 @@ from config.i18n import get_text
 
 def get_main_menu_keyboard(lang: str = 'uz', miniapp_url: str = None) -> ReplyKeyboardMarkup:
     builder = ReplyKeyboardBuilder()
-    safe_miniapp_url = miniapp_url.rstrip('/') + '/' if miniapp_url else None
 
-    if safe_miniapp_url:
-        builder.row(
-            KeyboardButton(
-                text=get_text('btn_open_miniapp', lang),
-                web_app=WebAppInfo(url=safe_miniapp_url),
-            )
-        )
+    builder.row(KeyboardButton(text=get_text('btn_open_miniapp', lang)))
 
     builder.row(
         KeyboardButton(text=get_text('btn_add_income', lang)),
@@ -46,6 +39,21 @@ def get_main_menu_keyboard(lang: str = 'uz', miniapp_url: str = None) -> ReplyKe
     builder.row(KeyboardButton(text=get_text('btn_invite', lang)))
 
     return builder.as_markup(resize_keyboard=True)
+
+
+def get_miniapp_launch_keyboard(lang: str = 'uz', miniapp_url: str = None) -> Optional[InlineKeyboardMarkup]:
+    safe_miniapp_url = miniapp_url.rstrip('/') + '/' if miniapp_url else None
+    if not safe_miniapp_url:
+        return None
+
+    builder = InlineKeyboardBuilder()
+    builder.row(
+        InlineKeyboardButton(
+            text=get_text('btn_open_miniapp', lang),
+            web_app=WebAppInfo(url=safe_miniapp_url),
+        )
+    )
+    return builder.as_markup()
 
 
 def get_cancel_keyboard(lang: str = 'uz') -> ReplyKeyboardMarkup:

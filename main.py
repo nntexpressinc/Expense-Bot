@@ -7,6 +7,7 @@ import sys
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.client.default import DefaultBotProperties
+from aiogram.types import MenuButtonWebApp, WebAppInfo
 
 from config.settings import settings
 from database.session import init_db, close_db
@@ -24,6 +25,30 @@ if not settings.DEBUG and not settings.SQL_ECHO:
     logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
+
+
+def _get_safe_miniapp_url() -> str | None:
+    if not settings.MINIAPP_URL:
+        return None
+    return settings.MINIAPP_URL.rstrip('/') + '/'
+
+
+async def configure_default_menu_button(bot: Bot) -> None:
+    safe_miniapp_url = _get_safe_miniapp_url()
+    if not safe_miniapp_url:
+        logger.warning("MINIAPP_URL is empty, menu button was not configured")
+        return
+
+    try:
+        await bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(
+                text="Open Mini App",
+                web_app=WebAppInfo(url=safe_miniapp_url),
+            )
+        )
+        logger.info("Default chat menu button configured for Mini App: %s", safe_miniapp_url)
+    except Exception as exc:
+        logger.warning("Failed to configure default chat menu button: %s", exc)
 
 
 async def main():
@@ -61,8 +86,9 @@ async def main():
     dp.include_router(admin.router)
     
     logger.info("Handlers registered")
-    
+
     try:
+        await configure_default_menu_button(bot)
         # Start polling
         logger.info("Bot started successfully. Polling...")
         await dp.start_polling(bot, skip_updates=True)

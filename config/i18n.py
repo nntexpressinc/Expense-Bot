@@ -45,6 +45,16 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
     'btn_confirm': {'uz': '✅ Tasdiqlash', 'ru': '✅ Подтвердить', 'en': '✅ Confirm'},
     'btn_reject': {'uz': '❌ Rad etish', 'ru': '❌ Отклонить', 'en': '❌ Reject'},
     'btn_open_miniapp': {'uz': "📱 Mini App ochish", 'ru': '📱 Открыть Mini App', 'en': '📱 Open Mini App'},
+    'msg_open_miniapp_prompt': {
+        'uz': "Mini Appni ochish uchun quyidagi tugmani bosing.",
+        'ru': 'Нажмите кнопку ниже, чтобы открыть Mini App.',
+        'en': 'Press the button below to open the Mini App.',
+    },
+    'msg_open_miniapp_unavailable': {
+        'uz': "Mini App URL sozlanmagan.",
+        'ru': 'URL Mini App не настроен.',
+        'en': 'Mini App URL is not configured.',
+    },
 
     'msg_welcome': {
         'uz': (
